@@ -91,7 +91,7 @@ func main() {
 }
 ```
 
-La configuración predeterminada escribe en `os.Stdout`, utiliza nivel `Info` y
+La configuración predeterminada escribe en `os.Stdout`, utiliza nivel `Debug` y
 codificación JSON. Si el nombre de la aplicación está vacío, se utiliza
 `go-app`.
 

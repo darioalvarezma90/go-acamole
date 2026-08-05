@@ -16,7 +16,7 @@ import (
 const (
 	defaultAppName      = "go-app"
 	defaultOutput       = ConsoleOutput
-	defaultLevel        = InfoLevel
+	defaultLevel        = DebugLevel
 	defaultEncoding     = JSONEncoding
 	defaultLogDirectory = "./logs"
 )

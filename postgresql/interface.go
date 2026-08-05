@@ -6,11 +6,11 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// Interface define el contrato común de un cliente PostgreSQL.
+// IClient define el contrato común de un cliente PostgreSQL.
 //
 // El wrapper administra la construcción, verificación y cierre del pool, pero
 // expone el tipo oficial de pgx para no duplicar su API de consultas.
-type Interface interface {
+type IClient interface {
 	// Driver devuelve el pool nativo de pgx.
 	Driver() *pgxpool.Pool
 
@@ -21,5 +21,5 @@ type Interface interface {
 	Close()
 }
 
-// Valida en tiempo de compilación que Client implementa Interface.
-var _ Interface = (*Client)(nil)
+// Valida en tiempo de compilación que Client implementa IClient.
+var _ IClient = (*Client)(nil)

@@ -6,11 +6,11 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
-// Interface define el contrato de un servidor de consumidores RabbitMQ.
+// IServer define el contrato de un servidor de consumidores RabbitMQ.
 //
 // El wrapper administra la conexión, los canales de consumo, acknowledgements
 // y el apagado, pero expone la conexión oficial para operaciones avanzadas.
-type Interface interface {
+type IServer interface {
 	// Driver devuelve la conexión nativa del driver oficial.
 	Driver() *amqp.Connection
 
@@ -26,5 +26,5 @@ type Interface interface {
 	Shutdown(ctx context.Context) error
 }
 
-// Valida en tiempo de compilación que Server implementa Interface.
-var _ Interface = (*Server)(nil)
+// Valida en tiempo de compilación que Server implementa IServer.
+var _ IServer = (*Server)(nil)

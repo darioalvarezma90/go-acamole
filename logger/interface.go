@@ -1,8 +1,8 @@
 package logger
 
-// Interface define los métodos estándar de registro.
+// ILogger define los métodos estándar de registro.
 // Mantiene el formato (mensaje, clave, valor, clave, valor...)
-type Interface interface {
+type ILogger interface {
 	Debug(message string, args ...any)
 	Info(message string, args ...any)
 	Warn(message string, args ...any)
@@ -10,5 +10,5 @@ type Interface interface {
 	Fatal(message string, args ...any)
 }
 
-// Valida en tiempo de compilación si Logger implementa Interface.
-var _ Interface = (*Logger)(nil)
+// Valida en tiempo de compilación si Logger implementa ILogger.
+var _ ILogger = (*Logger)(nil)

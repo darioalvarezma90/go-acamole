@@ -11,7 +11,7 @@ duplicar APIs maduras.
 Actualmente incluye:
 
 - [`logger`](./logger), registros estructurados sobre Zap;
-- [`mongodb`](./mongodb), cliente MongoDB con TLS y ciclo de vida administrado;
+- [`mongodb`](./mongodb), cliente MongoDB con TLS y repositorios de colecciones BSON;
 - [`postgresql`](./postgresql), pool PostgreSQL basado en pgx;
 - [`rabbitmq`](./rabbitmq), servidor concurrente de consumidores AMQP;
 - [`grpc`](./grpc), servidor gRPC con listener configurable y apagado graceful.
@@ -48,10 +48,11 @@ valor:
 log.Info("pedido procesado", "order_id", orderID, "duration_ms", duration.Milliseconds())
 ```
 
-La interfaz pública contiene únicamente los métodos de registro sin contexto:
+La interfaz pública `ILogger` contiene únicamente los métodos de registro sin
+contexto:
 
 ```go
-type Interface interface {
+type ILogger interface {
 	Debug(message string, args ...any)
 	Info(message string, args ...any)
 	Warn(message string, args ...any)
@@ -179,8 +180,9 @@ individual puede superar el tamaño máximo porque nunca se divide entre archivo
 ## Paquete `mongodb`
 
 `mongodb` administra un `*mongo.Client` del driver oficial v2 y la base de datos
-seleccionada. `NewClient` crea el driver y, de forma predeterminada, ejecuta
-`Ping` para verificar conectividad antes de devolverlo.
+seleccionada. El contrato del cliente se expone mediante `IClient`. `NewClient`
+crea el driver y, de forma predeterminada, ejecuta `Ping` para verificar
+conectividad antes de devolverlo.
 
 ```go
 package main
@@ -269,10 +271,121 @@ Opciones de `NewClient`:
 `Disconnect` directamente sobre `Driver`. `Close` es idempotente y conserva el
 resultado del primer intento. `Ping` rechaza contextos `nil` y clientes cerrados.
 
+### Tipo `Repository`
+
+`Repository` es un wrapper de `*mongo.Collection` para trabajar directamente
+con los tipos BSON del driver, sin definir modelos Go ni utilizar genéricos. Se
+construye a partir del `Client` y de un nombre de colección:
+
+```go
+orders, err := mongodb.NewRepository(client, "orders")
+if err != nil {
+	return err
+}
+```
+
+El nombre no puede estar vacío ni contener espacios al inicio o al final. La
+colección no tiene que existir previamente: MongoDB la creará al ejecutar la
+primera escritura. El contrato público está definido por `IRepository`:
+
+```go
+type IRepository interface {
+	Driver() *mongo.Collection
+	Find(ctx context.Context, filter any, opts ...options.Lister[options.FindOptions]) ([]bson.Raw, error)
+	FindOne(ctx context.Context, filter any, opts ...options.Lister[options.FindOneOptions]) (bson.Raw, error)
+	FindByID(ctx context.Context, id bson.ObjectID, opts ...options.Lister[options.FindOneOptions]) (bson.Raw, error)
+	Insert(ctx context.Context, documents any, opts ...options.Lister[options.InsertManyOptions]) (*mongo.InsertManyResult, error)
+	InsertOne(ctx context.Context, document any, opts ...options.Lister[options.InsertOneOptions]) (*mongo.InsertOneResult, error)
+}
+```
+
+| Método | Comportamiento |
+| --- | --- |
+| `Driver` | Devuelve `*mongo.Collection` para updates, deletes, agregaciones, índices, change streams u otras operaciones avanzadas. |
+| `Find` | Ejecuta una búsqueda y devuelve una copia independiente de cada documento como `[]bson.Raw`. |
+| `FindOne` | Devuelve un documento como `bson.Raw` y conserva `mongo.ErrNoDocuments` cuando no encuentra coincidencias. |
+| `FindByID` | Busca por `_id` utilizando un `bson.ObjectID`. |
+| `Insert` | Delega en `mongo.Collection.InsertMany` y devuelve `*mongo.InsertManyResult`. |
+| `InsertOne` | Inserta un documento y devuelve `*mongo.InsertOneResult`. |
+
+Los filtros y documentos individuales aceptan exclusivamente `bson.M`,
+`bson.D` o un `bson.Raw` válido. Para buscar todos los documentos se utiliza un
+documento vacío, por ejemplo `bson.D{}`, y no `nil`.
+
+`Insert` acepta colecciones no vacías de tipo `[]bson.M`, `[]bson.D`,
+`[]bson.Raw` o `[]any`; esta última permite combinar los tres tipos BSON. Tanto
+`Find` como las inserciones aceptan las opciones funcionales oficiales del
+driver.
+
+```go
+pendingOrders, err := orders.Find(
+	ctx,
+	bson.M{"status": "pending"},
+	options.Find().SetSort(bson.D{{Key: "created_at", Value: -1}}).SetLimit(100),
+)
+if err != nil {
+	return err
+}
+fmt.Println("pedidos pendientes:", len(pendingOrders))
+
+_, err = orders.Insert(
+	ctx,
+	[]bson.M{
+		{"status": "pending", "total": 1250},
+		{"status": "pending", "total": 850},
+	},
+	options.InsertMany().SetOrdered(false),
+)
+```
+
+Una inserción individual devuelve el `_id` exactamente con el tipo utilizado
+por MongoDB o por el llamador. Cuando el driver genera el identificador, éste es
+normalmente un `bson.ObjectID`:
+
+```go
+inserted, err := orders.InsertOne(ctx, bson.M{
+	"status": "pending",
+	"total":  1250,
+})
+if err != nil {
+	return err
+}
+
+orderID, ok := inserted.InsertedID.(bson.ObjectID)
+if !ok {
+	return fmt.Errorf("_id insertado no es ObjectID")
+}
+
+order, err := orders.FindByID(ctx, orderID)
+if err != nil {
+	return err
+}
+
+status, ok := order.Lookup("status").StringValueOK()
+if !ok {
+	return fmt.Errorf("status no existe o no es string")
+}
+fmt.Println(status)
+```
+
+Los errores de validación pueden comprobarse con `errors.Is`. Los principales
+son `ErrNilContext`, `ErrClientUnavailable`, `ErrClientClosed`,
+`ErrRepoUnavailable` y `ErrInvalidDocument`. Los errores del driver se envuelven
+sin perder su causa; por ejemplo, `errors.Is(err, mongo.ErrNoDocuments)` sigue
+funcionando después de `FindOne` o `FindByID`.
+
+`Repository` no tiene `Close`: no posee conexiones y el `Client` debe permanecer
+abierto mientras se use cualquiera de sus repositorios. Su estado es inmutable
+y `mongo.Collection` es segura para uso concurrente, por lo que distintas
+goroutines pueden compartir la misma instancia sin serializar sus operaciones.
+Si el cierre del cliente interrumpe una operación, el error conserva tanto
+`ErrClientClosed` como la causa devuelta por el driver.
+
 ## Paquete `postgresql`
 
-`postgresql` administra un `*pgxpool.Pool`. Acepta cadenas de conexión URL o
-libpq, valida la configuración resultante y ejecuta `Ping` por defecto.
+`postgresql` administra un `*pgxpool.Pool` mediante el contrato `IClient`.
+Acepta cadenas de conexión URL o libpq, valida la configuración resultante y
+ejecuta `Ping` por defecto.
 
 ```go
 package main
@@ -339,7 +452,8 @@ goroutines y espera que se liberen las conexiones adquiridas del pool.
 
 ## Paquete `rabbitmq`
 
-El paquete implementa un servidor de consumidores sobre el driver oficial
+El paquete implementa, mediante el contrato `IServer`, un servidor de
+consumidores sobre el driver oficial
 [`amqp091-go`](https://github.com/rabbitmq/amqp091-go). La conexión se establece
 en `NewServer`; la topología y los consumidores se inician al llamar `Serve`.
 Cada worker utiliza un canal AMQP dedicado.
@@ -458,10 +572,11 @@ Opciones de cada consumidor:
 
 ## Paquete `grpc`
 
-El paquete envuelve `grpc-go` sin duplicar la API generada por Protocol Buffers.
-`Driver` devuelve `*grpc.Server`, sobre el que se registran los servicios antes
-de iniciar el listener. No llame `Stop` o `GracefulStop` directamente sobre ese
-valor; use `Shutdown` para mantener coherente el estado del wrapper.
+El paquete envuelve `grpc-go` mediante el contrato `IServer`, sin duplicar la
+API generada por Protocol Buffers. `Driver` devuelve `*grpc.Server`, sobre el que
+se registran los servicios antes de iniciar el listener. No llame `Stop` o
+`GracefulStop` directamente sobre ese valor; use `Shutdown` para mantener
+coherente el estado del wrapper.
 
 ```go
 package main

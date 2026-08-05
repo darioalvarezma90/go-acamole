@@ -7,11 +7,11 @@ import (
 	grpcgo "google.golang.org/grpc"
 )
 
-// Interface define el contrato común de un servidor gRPC reutilizable.
+// IServer define el contrato común de un servidor gRPC reutilizable.
 //
 // El wrapper administra el listener y el apagado, pero expone el servidor
 // oficial para registrar servicios generados por protoc sin duplicar su API.
-type Interface interface {
+type IServer interface {
 	// Driver devuelve el servidor nativo de grpc-go.
 	Driver() *grpcgo.Server
 
@@ -30,5 +30,5 @@ type Interface interface {
 	Shutdown(ctx context.Context) error
 }
 
-// Valida en tiempo de compilación que Server implementa Interface.
-var _ Interface = (*Server)(nil)
+// Valida en tiempo de compilación que Server implementa IServer.
+var _ IServer = (*Server)(nil)

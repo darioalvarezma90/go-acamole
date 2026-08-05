@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// validatePoolConfig comprueba los límites y tiempos configurados para el pool.
 func validatePoolConfig(config *pgxpool.Config) error {
 	if config == nil || config.ConnConfig == nil {
 		return fmt.Errorf("configuracion del pool no puede ser nil")
@@ -45,6 +46,7 @@ func validatePoolConfig(config *pgxpool.Config) error {
 	return nil
 }
 
+// applyTLSConfig aplica una copia verificada de TLS al servidor principal y sus fallbacks.
 func applyTLSConfig(poolConfig *pgxpool.Config, base *tls.Config) error {
 	if poolConfig == nil || poolConfig.ConnConfig == nil {
 		return fmt.Errorf("configuracion del pool no puede ser nil")
@@ -104,6 +106,7 @@ func applyTLSConfig(poolConfig *pgxpool.Config, base *tls.Config) error {
 	return nil
 }
 
+// tlsConfigForHost prepara una configuración TLS independiente para un host.
 func tlsConfigForHost(base *tls.Config, host string) (*tls.Config, error) {
 	configuration := base.Clone()
 	if configuration.MinVersion == 0 {
@@ -122,6 +125,7 @@ func tlsConfigForHost(base *tls.Config, host string) (*tls.Config, error) {
 	return configuration, nil
 }
 
+// validateTLSRequired comprueba que el servidor principal y sus fallbacks usen TLS.
 func validateTLSRequired(config *pgxpool.Config) error {
 	if config.ConnConfig.TLSConfig == nil {
 		return fmt.Errorf("la conexion principal permite transporte sin tls")
@@ -134,6 +138,7 @@ func validateTLSRequired(config *pgxpool.Config) error {
 	return nil
 }
 
+// fallbackKey construye una clave estable a partir del host y puerto alternativos.
 func fallbackKey(host string, port uint16) string {
 	return net.JoinHostPort(host, strconv.FormatUint(uint64(port), 10))
 }

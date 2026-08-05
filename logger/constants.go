@@ -10,6 +10,7 @@ const (
 	ErrorLevel
 )
 
+// isValid indica si el nivel corresponde a uno de los valores admitidos.
 func (l Level) isValid() bool {
 	return l == DebugLevel || l == InfoLevel || l == WarnLevel || l == ErrorLevel
 }
@@ -28,11 +29,13 @@ const (
 	ConsoleAndFileOutput = ConsoleOutput | FileOutput
 )
 
+// isValid indica si la combinación de salidas contiene únicamente valores admitidos.
 func (o Output) isValid() bool {
 	return o != 0 && o&^ConsoleAndFileOutput == 0
 
 }
 
+// includes indica si la configuración contiene la salida especificada.
 func (o Output) includes(output Output) bool {
 	return o&output != 0
 }
@@ -49,6 +52,7 @@ const (
 	TextEncoding
 )
 
+// isValid indica si la codificación corresponde a uno de los valores admitidos.
 func (e Encoding) isValid() bool {
 	return e == JSONEncoding || e == TextEncoding
 }

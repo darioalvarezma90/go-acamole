@@ -53,18 +53,19 @@ type dailyLogFile struct {
 	compressed bool
 }
 
+// newDailyWriter construye un escritor con rotación diaria y por tamaño.
 func newDailyWriter(directory, baseName string, rotation *Rotation) (*dailyWriter, error) {
 	normalizedBaseName := normalizeBaseName(baseName)
 	absoluteDirectory, err := filepath.Abs(directory)
 	if err != nil {
-		return nil, fmt.Errorf("resolve log directory: %w", err)
+		return nil, fmt.Errorf("resolviendo directorio de logs: %w", err)
 	}
 
 	registryKey := filepath.Join(filepath.Clean(absoluteDirectory), normalizedBaseName)
 	activeDailyWriters.Lock()
 	if _, exists := activeDailyWriters.paths[registryKey]; exists {
 		activeDailyWriters.Unlock()
-		return nil, fmt.Errorf("another logger is already using %q", registryKey)
+		return nil, fmt.Errorf("otro logger ya está utilizando %q", registryKey)
 	}
 	activeDailyWriters.paths[registryKey] = struct{}{}
 	activeDailyWriters.Unlock()
@@ -82,6 +83,7 @@ func newDailyWriter(directory, baseName string, rotation *Rotation) (*dailyWrite
 	}, nil
 }
 
+// Write escribe datos en el segmento correspondiente a la fecha actual.
 func (w *dailyWriter) Write(data []byte) (int, error) {
 	w.mutex.Lock()
 	defer w.mutex.Unlock()
@@ -109,6 +111,7 @@ func (w *dailyWriter) Write(data []byte) (int, error) {
 	return written, err
 }
 
+// Close sincroniza y cierra el archivo activo, y libera su registro de uso.
 func (w *dailyWriter) Close() error {
 	w.mutex.Lock()
 	defer w.mutex.Unlock()
@@ -130,11 +133,11 @@ func (w *dailyWriter) Close() error {
 
 	switch {
 	case syncErr != nil && closeErr != nil:
-		return fmt.Errorf("sync daily log file: %v; close daily log file: %w", syncErr, closeErr)
+		return fmt.Errorf("sincronizando archivo diario de logs: %v; cerrando archivo diario de logs: %w", syncErr, closeErr)
 	case syncErr != nil:
-		return fmt.Errorf("sync daily log file: %w", syncErr)
+		return fmt.Errorf("sincronizando archivo diario de logs: %w", syncErr)
 	case closeErr != nil:
-		return fmt.Errorf("close daily log file: %w", closeErr)
+		return fmt.Errorf("cerrando archivo diario de logs: %w", closeErr)
 	default:
 		return nil
 	}
@@ -149,11 +152,12 @@ func (w *dailyWriter) Sync() error {
 		return nil
 	}
 	if err := w.file.Sync(); err != nil {
-		return fmt.Errorf("sync daily log file: %w", err)
+		return fmt.Errorf("sincronizando archivo diario de logs: %w", err)
 	}
 	return nil
 }
 
+// releaseRegistration libera la ruta reservada por este escritor.
 func (w *dailyWriter) releaseRegistration() {
 	if w.registryKey == "" {
 		return
@@ -164,6 +168,7 @@ func (w *dailyWriter) releaseRegistration() {
 	w.registryKey = ""
 }
 
+// openDate cambia el escritor al segmento disponible de la fecha indicada.
 func (w *dailyWriter) openDate(date string, now time.Time) error {
 	if err := w.finishCurrent(); err != nil {
 		return err
@@ -187,6 +192,7 @@ func (w *dailyWriter) openDate(date string, now time.Time) error {
 	return nil
 }
 
+// compressCompletedFiles comprime los segmentos terminados excepto el activo.
 func (w *dailyWriter) compressCompletedFiles(activeDate string, activeIndex int) error {
 	files, err := w.logFiles()
 	if err != nil {
@@ -201,12 +207,13 @@ func (w *dailyWriter) compressCompletedFiles(activeDate string, activeIndex int)
 			continue
 		}
 		if err := compressLogFile(file.path); err != nil {
-			return fmt.Errorf("compress completed log file: %w", err)
+			return fmt.Errorf("comprimiendo archivo de logs terminado: %w", err)
 		}
 	}
 	return nil
 }
 
+// openNextSegment cierra el segmento actual y abre el siguiente de la misma fecha.
 func (w *dailyWriter) openNextSegment(now time.Time) error {
 	if err := w.finishCurrent(); err != nil {
 		return err
@@ -219,6 +226,7 @@ func (w *dailyWriter) openNextSegment(now time.Time) error {
 	return nil
 }
 
+// finishCurrent cierra el segmento activo y lo comprime cuando corresponde.
 func (w *dailyWriter) finishCurrent() error {
 	if w.file == nil {
 		return nil
@@ -227,30 +235,31 @@ func (w *dailyWriter) finishCurrent() error {
 	path := w.file.Name()
 	size := w.currentSize
 	if err := w.file.Close(); err != nil {
-		return fmt.Errorf("close rotated log file: %w", err)
+		return fmt.Errorf("cerrando archivo de logs rotado: %w", err)
 	}
 	w.file = nil
 	w.currentSize = 0
 
 	if w.compress && size > 0 {
 		if err := compressLogFile(path); err != nil {
-			return fmt.Errorf("compress rotated log file: %w", err)
+			return fmt.Errorf("comprimiendo archivo de logs rotado: %w", err)
 		}
 	}
 	return nil
 }
 
+// openSegment abre o crea el segmento identificado por fecha e índice.
 func (w *dailyWriter) openSegment(date string, index int) error {
 	path := w.segmentPath(date, index)
 	file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		return fmt.Errorf("open daily log file: %w", err)
+		return fmt.Errorf("abriendo archivo diario de logs: %w", err)
 	}
 
 	info, err := file.Stat()
 	if err != nil {
 		_ = file.Close()
-		return fmt.Errorf("stat daily log file: %w", err)
+		return fmt.Errorf("consultando archivo diario de logs: %w", err)
 	}
 
 	w.file = file
@@ -260,6 +269,7 @@ func (w *dailyWriter) openSegment(date string, index int) error {
 	return nil
 }
 
+// availableSegment determina el índice reutilizable o siguiente para una fecha.
 func (w *dailyWriter) availableSegment(date string) (int, error) {
 	files, err := w.logFiles()
 	if err != nil {
@@ -288,7 +298,7 @@ func (w *dailyWriter) availableSegment(date string) (int, error) {
 	if active != nil {
 		info, err := os.Stat(active.path)
 		if err != nil {
-			return 0, fmt.Errorf("stat active log segment: %w", err)
+			return 0, fmt.Errorf("consultando segmento activo de logs: %w", err)
 		}
 		if info.Size() < w.maxSizeBytes {
 			return maxIndex, nil
@@ -297,6 +307,7 @@ func (w *dailyWriter) availableSegment(date string) (int, error) {
 	return maxIndex + 1, nil
 }
 
+// cleanup elimina archivos vencidos y respaldos que exceden la retención.
 func (w *dailyWriter) cleanup(now time.Time) error {
 	files, err := w.logFiles()
 	if err != nil {
@@ -318,7 +329,7 @@ func (w *dailyWriter) cleanup(now time.Time) error {
 			cutoff := beginningOfDay(now).AddDate(0, 0, -w.maxAgeDays)
 			if file.date.Before(cutoff) {
 				if err := os.Remove(file.path); err != nil && firstErr == nil {
-					firstErr = fmt.Errorf("remove expired log file: %w", err)
+					firstErr = fmt.Errorf("eliminando archivo de logs vencido: %w", err)
 				}
 				continue
 			}
@@ -335,17 +346,18 @@ func (w *dailyWriter) cleanup(now time.Time) error {
 		})
 		for _, file := range remaining[w.maxBackups:] {
 			if err := os.Remove(file.path); err != nil && firstErr == nil {
-				firstErr = fmt.Errorf("remove excess log backup: %w", err)
+				firstErr = fmt.Errorf("eliminando respaldo excedente de logs: %w", err)
 			}
 		}
 	}
 	return firstErr
 }
 
+// logFiles obtiene los archivos de este escritor y extrae sus metadatos.
 func (w *dailyWriter) logFiles() ([]dailyLogFile, error) {
 	entries, err := os.ReadDir(w.directory)
 	if err != nil {
-		return nil, fmt.Errorf("read log directory: %w", err)
+		return nil, fmt.Errorf("leyendo directorio de logs: %w", err)
 	}
 
 	location := time.UTC
@@ -373,6 +385,7 @@ func (w *dailyWriter) logFiles() ([]dailyLogFile, error) {
 	return files, nil
 }
 
+// segmentPath construye la ruta de un segmento a partir de su fecha e índice.
 func (w *dailyWriter) segmentPath(date string, index int) string {
 	name := w.baseName + "-" + date
 	if index > 0 {
@@ -381,6 +394,7 @@ func (w *dailyWriter) segmentPath(date string, index int) string {
 	return filepath.Join(w.directory, name+".log")
 }
 
+// currentTime devuelve la hora actual en la zona configurada para la rotación.
 func (w *dailyWriter) currentTime() time.Time {
 	now := w.now()
 	if w.localTime {
@@ -389,6 +403,7 @@ func (w *dailyWriter) currentTime() time.Time {
 	return now.UTC()
 }
 
+// normalizeBaseName elimina la extensión .log del nombre base cuando existe.
 func normalizeBaseName(name string) string {
 	if strings.EqualFold(filepath.Ext(name), ".log") {
 		return strings.TrimSuffix(name, filepath.Ext(name))
@@ -396,6 +411,7 @@ func normalizeBaseName(name string) string {
 	return name
 }
 
+// parseLogFileName analiza la fecha, el índice y la compresión de un archivo de logs.
 func parseLogFileName(baseName, name string, location *time.Location) (time.Time, int, bool, bool) {
 	prefix := baseName + "-"
 	if !strings.HasPrefix(name, prefix) {
@@ -434,10 +450,12 @@ func parseLogFileName(baseName, name string, location *time.Location) (time.Time
 	return date, index, compressed, true
 }
 
+// beginningOfDay devuelve el inicio del día en la zona horaria del valor.
 func beginningOfDay(value time.Time) time.Time {
 	return time.Date(value.Year(), value.Month(), value.Day(), 0, 0, 0, 0, value.Location())
 }
 
+// compressLogFile comprime un archivo con gzip y conserva sus permisos y fecha.
 func compressLogFile(path string) error {
 	source, err := os.Open(path)
 	if err != nil {

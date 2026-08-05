@@ -38,6 +38,7 @@ type Logger struct {
 	closeErr      error
 }
 
+// NewLogger construye un registrador con las opciones funcionales proporcionadas.
 func NewLogger(appName string, options ...LoggerOption) (*Logger, error) {
 	if appName == "" {
 		appName = defaultAppName
@@ -138,6 +139,7 @@ func NewLogger(appName string, options ...LoggerOption) (*Logger, error) {
 	return l, nil
 }
 
+// validate comprueba que la configuración interna del registrador sea válida.
 func (l *Logger) validate() error {
 	if l == nil {
 		return fmt.Errorf("logger no puede ser nil")
@@ -211,37 +213,40 @@ func (l *Logger) Sync() error {
 	return l.fileWriter.Sync()
 }
 
+// canLog indica si el registrador está listo para aceptar nuevas entradas.
 func (l *Logger) canLog() bool {
 	return l != nil && l.driver != nil && !l.closed.Load()
 }
 
-// Implementación de la interface (usamos los métodos *w de Zap SugaredLogger).
-// Los métodos *w esperan (mensaje, clave, valor, clave, valor...).
-
+// Debug registra un mensaje con nivel de depuración y sus campos estructurados.
 func (l *Logger) Debug(message string, args ...any) {
 	if l.canLog() {
 		l.driver.Debugw(message, args...)
 	}
 }
 
+// Info registra un mensaje informativo y sus campos estructurados.
 func (l *Logger) Info(message string, args ...any) {
 	if l.canLog() {
 		l.driver.Infow(message, args...)
 	}
 }
 
+// Warn registra un mensaje de advertencia y sus campos estructurados.
 func (l *Logger) Warn(message string, args ...any) {
 	if l.canLog() {
 		l.driver.Warnw(message, args...)
 	}
 }
 
+// Error registra un mensaje de error y sus campos estructurados.
 func (l *Logger) Error(message string, args ...any) {
 	if l.canLog() {
 		l.driver.Errorw(message, args...)
 	}
 }
 
+// Fatal registra un error, cierra el registrador y termina el proceso con código 1.
 func (l *Logger) Fatal(message string, args ...any) {
 	if l.canLog() {
 		l.driver.Errorw(message, args...)

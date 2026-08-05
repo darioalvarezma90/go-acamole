@@ -64,11 +64,11 @@ func TestRotationValidation(t *testing.T) {
 		rotation    *Rotation
 		wantInError string
 	}{
-		{name: "nil", rotation: nil, wantInError: "cannot be nil"},
-		{name: "zero size", rotation: &Rotation{MaxSizeMB: 0}, wantInError: "greater than zero"},
-		{name: "negative size", rotation: &Rotation{MaxSizeMB: -1}, wantInError: "greater than zero"},
-		{name: "negative backups", rotation: &Rotation{MaxSizeMB: 1, MaxBackups: -1}, wantInError: "backups"},
-		{name: "negative age", rotation: &Rotation{MaxSizeMB: 1, MaxAgeDays: -1}, wantInError: "age"},
+		{name: "nil", rotation: nil, wantInError: "no puede ser nil"},
+		{name: "zero size", rotation: &Rotation{MaxSizeMB: 0}, wantInError: "mayor que cero"},
+		{name: "negative size", rotation: &Rotation{MaxSizeMB: -1}, wantInError: "mayor que cero"},
+		{name: "negative backups", rotation: &Rotation{MaxSizeMB: 1, MaxBackups: -1}, wantInError: "respaldos"},
+		{name: "negative age", rotation: &Rotation{MaxSizeMB: 1, MaxAgeDays: -1}, wantInError: "antigüedad"},
 	}
 
 	if strconv.IntSize == 64 {
@@ -79,7 +79,7 @@ func TestRotationValidation(t *testing.T) {
 		}{
 			name:        "size overflow",
 			rotation:    &Rotation{MaxSizeMB: int(math.MaxInt64/bytesPerMB + 1)},
-			wantInError: "too large",
+			wantInError: "demasiado grande",
 		})
 	}
 
@@ -101,7 +101,7 @@ func TestNewRotationWrapsValidationError(t *testing.T) {
 	if err == nil {
 		t.Fatal("NewRotation() error = nil")
 	}
-	if !strings.Contains(err.Error(), "validate rotation configuration") {
+	if !strings.Contains(err.Error(), "error validando configuración de rotación") {
 		t.Fatalf("NewRotation() error = %q, want validation context", err)
 	}
 }

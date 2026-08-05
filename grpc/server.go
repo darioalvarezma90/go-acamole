@@ -85,6 +85,7 @@ func NewServer(address string, opts ...ServerOption) (*Server, error) {
 	return server, nil
 }
 
+// validate comprueba que la configuración interna del servidor sea válida.
 func (s *Server) validate() error {
 	if s == nil {
 		return fmt.Errorf("servidor no puede ser nil")
@@ -109,6 +110,7 @@ func (s *Server) validate() error {
 	return nil
 }
 
+// newGRPCServer construye el servidor gRPC nativo con las opciones configuradas.
 func newGRPCServer(options []grpcgo.ServerOption) (server *grpcgo.Server, err error) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
@@ -119,6 +121,7 @@ func newGRPCServer(options []grpcgo.ServerOption) (server *grpcgo.Server, err er
 	return grpcgo.NewServer(options...), nil
 }
 
+// isNilInterface determina si una interfaz es nula o contiene un valor nulo.
 func isNilInterface(value any) bool {
 	if value == nil {
 		return true
@@ -250,6 +253,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	}
 }
 
+// signalShutdownDone notifica que el proceso de apagado del servidor terminó.
 func (s *Server) signalShutdownDone() {
 	s.doneOnce.Do(func() {
 		close(s.shutdownDone)

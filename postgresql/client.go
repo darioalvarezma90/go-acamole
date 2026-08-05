@@ -111,6 +111,7 @@ func NewClient(ctx context.Context, connectionString string, opts ...ClientOptio
 	return client, nil
 }
 
+// validate comprueba que la configuración interna del cliente sea válida.
 func (c *Client) validate() error {
 	if c == nil {
 		return fmt.Errorf("cliente no puede ser nil")

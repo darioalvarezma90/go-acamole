@@ -170,6 +170,7 @@ func WithPoolConfigurer(configure PoolConfigurer) ClientOption {
 	return withPoolConfigurer(configure)
 }
 
+// withPoolConfigurer agrega un configurador interno a las opciones del cliente.
 func withPoolConfigurer(configure PoolConfigurer) ClientOption {
 	return func(client *Client) {
 		client.poolConfigurers = append(client.poolConfigurers, configure)

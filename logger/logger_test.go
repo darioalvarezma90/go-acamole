@@ -237,7 +237,7 @@ func TestNewLoggerRejectsInvalidConfiguration(t *testing.T) {
 		{name: "file name with directory", appName: "app", options: []LoggerOption{WithOutput(FileOutput), WithDirectory(directory), WithFileName(filepath.Join("nested", "app")), WithRotation(validRotation)}, wantInError: "directorios"},
 		{name: "empty normalized file name", appName: "app", options: []LoggerOption{WithOutput(FileOutput), WithDirectory(directory), WithFileName(".log"), WithRotation(validRotation)}, wantInError: "archivo"},
 		{name: "nil rotation", appName: "app", options: []LoggerOption{WithOutput(FileOutput), WithDirectory(directory), WithRotation(nil)}, wantInError: "rotación"},
-		{name: "invalid rotation", appName: "app", options: []LoggerOption{WithOutput(FileOutput), WithDirectory(directory), WithRotation(&Rotation{MaxSizeMB: 0})}, wantInError: "greater than zero"},
+		{name: "invalid rotation", appName: "app", options: []LoggerOption{WithOutput(FileOutput), WithDirectory(directory), WithRotation(&Rotation{MaxSizeMB: 0})}, wantInError: "mayor que cero"},
 	}
 
 	for _, test := range tests {

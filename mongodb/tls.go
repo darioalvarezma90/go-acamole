@@ -61,6 +61,7 @@ func NewTLS(
 	return configuration, nil
 }
 
+// validate comprueba que las rutas y credenciales TLS requeridas estén presentes.
 func (configuration *TLS) validate() error {
 	if configuration == nil {
 		return fmt.Errorf("configuracion tls no puede ser nil")
@@ -80,6 +81,7 @@ func (configuration *TLS) validate() error {
 	return nil
 }
 
+// build carga los certificados y construye la configuración TLS del driver.
 func (configuration *TLS) build() (*tls.Config, error) {
 	caPEM, err := os.ReadFile(configuration.caFile)
 	if err != nil {
@@ -190,6 +192,7 @@ func (configuration *TLS) prepareClientKey(clientKeyPEM []byte) ([]byte, error) 
 	return resultPEM, nil
 }
 
+// isLegacyEncryptedPEM indica si un bloque PEM usa el cifrado heredado.
 func isLegacyEncryptedPEM(block *pem.Block) bool {
 	if block == nil {
 		return false
@@ -199,6 +202,7 @@ func isLegacyEncryptedPEM(block *pem.Block) bool {
 	return hasProcType || hasDEKInfo
 }
 
+// clone devuelve una copia independiente de la configuración TLS construida.
 func (configuration *TLS) clone() *tls.Config {
 	if configuration == nil || configuration.driverConfig == nil {
 		return nil
@@ -206,12 +210,14 @@ func (configuration *TLS) clone() *tls.Config {
 	return configuration.driverConfig.Clone()
 }
 
+// clearPassword borra de memoria la contraseña almacenada para la llave cliente.
 func (configuration *TLS) clearPassword() {
 	clearBytes(configuration.clientKeyPassword)
 	configuration.clientKeyPassword = nil
 	configuration.clientKeyPasswordSet = false
 }
 
+// clearBytes sobrescribe con ceros el contenido de un bloque de memoria.
 func clearBytes(data []byte) {
 	for index := range data {
 		data[index] = 0

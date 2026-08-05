@@ -125,6 +125,7 @@ func (c *Client) connect() error {
 	return nil
 }
 
+// validate comprueba que la configuración interna del cliente sea válida.
 func (c *Client) validate() error {
 	if c == nil {
 		return fmt.Errorf("cliente no puede ser nil")

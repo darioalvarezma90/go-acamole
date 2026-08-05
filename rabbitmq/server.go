@@ -94,6 +94,7 @@ func NewServer(uri string, opts ...ServerOption) (*Server, error) {
 	return server, nil
 }
 
+// validate comprueba que la configuración interna del servidor sea válida.
 func (s *Server) validate() error {
 	if s == nil {
 		return fmt.Errorf("servidor no puede ser nil")
@@ -141,6 +142,7 @@ func (s *Server) validate() error {
 	return nil
 }
 
+// validateTLSConfig comprueba que la configuración TLS valide identidad y certificados.
 func validateTLSConfig(configuration *tls.Config) error {
 	if configuration.InsecureSkipVerify {
 		return fmt.Errorf("InsecureSkipVerify no está permitido")
@@ -198,6 +200,7 @@ func (s *Server) RegisterConsumer(queue string, handler Handler, opts ...Consume
 	return nil
 }
 
+// validateConsumerCompatibility evita configuraciones incompatibles para una misma cola.
 func validateConsumerCompatibility(existingConsumers []*consumer, candidate *consumer) error {
 	for _, existing := range existingConsumers {
 		if existing == nil || existing.queue != candidate.queue {
@@ -298,6 +301,7 @@ func (s *Server) Serve(ctx context.Context) (serveErr error) {
 	}
 }
 
+// configureTopology ejecuta en orden los configuradores registrados del topology.
 func (s *Server) configureTopology() error {
 	if len(s.topologyConfigurers) == 0 {
 		return nil
@@ -321,6 +325,7 @@ func (s *Server) configureTopology() error {
 	return nil
 }
 
+// startConsumers abre los canales y pone en marcha todos los workers configurados.
 func (s *Server) startConsumers(
 	ctx context.Context,
 	consumers []*consumer,
@@ -368,6 +373,7 @@ func (s *Server) startConsumers(
 	return nil
 }
 
+// consume procesa entregas de un worker hasta que su contexto termina.
 func (s *Server) consume(
 	ctx context.Context,
 	configuration *consumer,
@@ -389,6 +395,7 @@ func (s *Server) consume(
 	}
 }
 
+// processDelivery ejecuta el manejador y aplica la política de confirmación configurada.
 func (s *Server) processDelivery(ctx context.Context, configuration *consumer, delivery amqp.Delivery) (result error) {
 	handlerErr := callHandler(ctx, configuration.handler, delivery)
 	if configuration.autoAck {
@@ -420,6 +427,7 @@ func (s *Server) processDelivery(ctx context.Context, configuration *consumer, d
 	return nil
 }
 
+// callHandler ejecuta un manejador y convierte cualquier pánico en un error.
 func callHandler(ctx context.Context, handler Handler, delivery amqp.Delivery) (err error) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
@@ -429,6 +437,7 @@ func callHandler(ctx context.Context, handler Handler, delivery amqp.Delivery) (
 	return handler(ctx, delivery)
 }
 
+// reportHandlerError entrega al callback configurado los errores de procesamiento.
 func (s *Server) reportHandlerError(queue string, delivery amqp.Delivery, err error) {
 	handlerError := &HandlerError{
 		Queue:       queue,
@@ -442,12 +451,14 @@ func (s *Server) reportHandlerError(queue string, delivery amqp.Delivery, err er
 	s.errorHandler(handlerError)
 }
 
+// addConsumerChannel registra un canal para poder cerrarlo durante el apagado.
 func (s *Server) addConsumerChannel(channel *amqp.Channel) {
 	s.stateMutex.Lock()
 	defer s.stateMutex.Unlock()
 	s.consumerChannels = append(s.consumerChannels, channel)
 }
 
+// closeConsumerChannels cierra todos los canales de consumidores registrados.
 func (s *Server) closeConsumerChannels() {
 	s.stateMutex.Lock()
 	channels := s.consumerChannels
@@ -460,6 +471,7 @@ func (s *Server) closeConsumerChannels() {
 	}
 }
 
+// closeConnection cierra de forma idempotente la conexión con el broker.
 func (s *Server) closeConnection(ctx context.Context) error {
 	s.closeMutex.Lock()
 	defer s.closeMutex.Unlock()
@@ -479,6 +491,7 @@ func (s *Server) closeConnection(ctx context.Context) error {
 	return s.closeErr
 }
 
+// connectionCloseDeadline obtiene un límite utilizable para cerrar la conexión.
 func connectionCloseDeadline(ctx context.Context) (time.Time, bool) {
 	if ctx == nil {
 		return time.Now(), true
@@ -522,6 +535,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	}
 }
 
+// signalDone notifica que el ciclo de vida del servidor terminó.
 func (s *Server) signalDone() {
 	done := s.doneChannel()
 	s.doneOnce.Do(func() {
@@ -529,6 +543,7 @@ func (s *Server) signalDone() {
 	})
 }
 
+// doneChannel devuelve el canal compartido de finalización del servidor.
 func (s *Server) doneChannel() chan struct{} {
 	s.stateMutex.Lock()
 	defer s.stateMutex.Unlock()
@@ -538,6 +553,7 @@ func (s *Server) doneChannel() chan struct{} {
 	return s.done
 }
 
+// countWorkers suma la concurrencia configurada para todos los consumidores.
 func countWorkers(consumers []*consumer) int {
 	count := 0
 	for _, configuration := range consumers {
@@ -546,6 +562,7 @@ func countWorkers(consumers []*consumer) int {
 	return count
 }
 
+// wrapChannelCloseError normaliza los errores devueltos al cerrar un canal AMQP.
 func wrapChannelCloseError(err error) error {
 	if err == nil || errors.Is(err, amqp.ErrClosed) {
 		return nil

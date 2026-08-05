@@ -40,27 +40,28 @@ func NewRotation(options ...RotationOption) (*Rotation, error) {
 	}
 
 	if err := rotation.validate(); err != nil {
-		return nil, fmt.Errorf("validate rotation configuration: %w", err)
+		return nil, fmt.Errorf("error validando configuración de rotación: %w", err)
 	}
 
 	return rotation, nil
 }
 
+// validate comprueba que los límites de rotación y retención sean válidos.
 func (r *Rotation) validate() error {
 	if r == nil {
-		return fmt.Errorf("rotation configuration cannot be nil")
+		return fmt.Errorf("configuración de rotación no puede ser nil")
 	}
 	if r.MaxSizeMB <= 0 {
-		return fmt.Errorf("rotation max size must be greater than zero")
+		return fmt.Errorf("tamaño máximo de rotación debe ser mayor que cero")
 	}
 	if int64(r.MaxSizeMB) > math.MaxInt64/bytesPerMB {
-		return fmt.Errorf("rotation max size is too large")
+		return fmt.Errorf("tamaño máximo de rotación es demasiado grande")
 	}
 	if r.MaxBackups < 0 {
-		return fmt.Errorf("rotation max backups cannot be negative")
+		return fmt.Errorf("cantidad máxima de respaldos de rotación no puede ser negativa")
 	}
 	if r.MaxAgeDays < 0 {
-		return fmt.Errorf("rotation max age cannot be negative")
+		return fmt.Errorf("antigüedad máxima de rotación no puede ser negativa")
 	}
 	return nil
 }

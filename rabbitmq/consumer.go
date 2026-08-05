@@ -26,6 +26,7 @@ type HandlerError struct {
 	Err         error
 }
 
+// Error devuelve una descripción del error producido al procesar un mensaje.
 func (e *HandlerError) Error() string {
 	if e == nil {
 		return "error de handler rabbitmq"
@@ -38,6 +39,7 @@ func (e *HandlerError) Error() string {
 	)
 }
 
+// Unwrap devuelve la causa original para permitir errors.Is y errors.As.
 func (e *HandlerError) Unwrap() error {
 	if e == nil {
 		return nil
@@ -60,6 +62,7 @@ type consumer struct {
 	requeueOnError bool
 }
 
+// newConsumer construye y valida la configuración interna de un consumidor.
 func newConsumer(queue string, handler Handler, opts ...ConsumerOption) (*consumer, error) {
 	configuration := &consumer{
 		queue:          queue,
@@ -81,6 +84,7 @@ func newConsumer(queue string, handler Handler, opts ...ConsumerOption) (*consum
 	return configuration, nil
 }
 
+// validate comprueba que la configuración interna del consumidor sea válida.
 func (c *consumer) validate() error {
 	if c == nil {
 		return fmt.Errorf("consumidor no puede ser nil")
@@ -109,6 +113,7 @@ func (c *consumer) validate() error {
 	return nil
 }
 
+// workerTag devuelve la etiqueta asignada a un worker del consumidor.
 func (c *consumer) workerTag(index int) string {
 	if c.tag == "" || c.concurrency == 1 {
 		return c.tag
@@ -116,6 +121,7 @@ func (c *consumer) workerTag(index int) string {
 	return fmt.Sprintf("%s-%d", c.tag, index+1)
 }
 
+// cloneTable devuelve una copia profunda de una tabla AMQP.
 func cloneTable(table amqp.Table) amqp.Table {
 	if table == nil {
 		return nil
@@ -127,6 +133,7 @@ func cloneTable(table amqp.Table) amqp.Table {
 	return result
 }
 
+// cloneTableValue copia los valores mutables conocidos de una tabla AMQP.
 func cloneTableValue(value any) any {
 	switch typedValue := value.(type) {
 	case amqp.Table:

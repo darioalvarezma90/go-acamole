@@ -73,6 +73,7 @@ func WithErrorHandler(handler ErrorHandler) ServerOption {
 	}
 }
 
+// cloneAMQPConfig devuelve una copia independiente de la configuración AMQP.
 func cloneAMQPConfig(configuration amqp.Config) amqp.Config {
 	result := configuration
 	result.SASL = append([]amqp.Authentication(nil), configuration.SASL...)

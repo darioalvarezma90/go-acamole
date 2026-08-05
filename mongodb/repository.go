@@ -172,6 +172,7 @@ func (r *Repository) InsertOne(
 	return result, nil
 }
 
+// collectionForOperation valida el contexto y devuelve la colección disponible.
 func (r *Repository) collectionForOperation(ctx context.Context) (*mongo.Collection, error) {
 	if ctx == nil {
 		return nil, ErrNilContext
@@ -185,6 +186,7 @@ func (r *Repository) collectionForOperation(ctx context.Context) (*mongo.Collect
 	return r.driver, nil
 }
 
+// wrapOperationError agrega contexto a un error y conserva sus causas conocidas.
 func (r *Repository) wrapOperationError(operation string, err error) error {
 	if err == nil {
 		return nil
@@ -201,6 +203,7 @@ func (r *Repository) wrapOperationError(operation string, err error) error {
 	return operationErr
 }
 
+// validateBSONDocument comprueba que un valor sea un documento BSON admitido.
 func validateBSONDocument(document any, argumentName string) error {
 	switch value := document.(type) {
 	case bson.M:
@@ -229,6 +232,7 @@ func validateBSONDocument(document any, argumentName string) error {
 	return nil
 }
 
+// validateBSONDocuments comprueba una colección de documentos BSON admitidos.
 func validateBSONDocuments(documents any) error {
 	switch values := documents.(type) {
 	case []bson.M:
@@ -277,6 +281,7 @@ func validateBSONDocuments(documents any) error {
 	return nil
 }
 
+// emptyDocumentsError construye el error utilizado para una inserción vacía.
 func emptyDocumentsError() error {
 	return fmt.Errorf("%w: documentos no puede estar vacío", ErrInvalidDocument)
 }

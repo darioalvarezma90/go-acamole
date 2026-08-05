@@ -24,16 +24,16 @@ func WithMaxAgeDays(days int) RotationOption {
 	}
 }
 
-// WithCompression habilita o deshabilita la compresión gzip de los archivos rotados.
-func WithCompression(enabled bool) RotationOption {
+// WithCompression habilita la compresión gzip de los archivos rotados.
+func WithCompression() RotationOption {
 	return func(rotation *Rotation) {
-		rotation.Compress = enabled
+		rotation.Compress = true
 	}
 }
 
-// WithLocalTime habilita o deshabilita marcas de tiempo locales en los nombres.
-func WithLocalTime(enabled bool) RotationOption {
+// WithLocalTime habilita marcas de tiempo locales en los nombres.
+func WithLocalTime() RotationOption {
 	return func(rotation *Rotation) {
-		rotation.LocalTime = enabled
+		rotation.LocalTime = true
 	}
 }

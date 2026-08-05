@@ -48,9 +48,41 @@ func TestLoggerWritesAllLevels(t *testing.T) {
 	}
 }
 
-func TestLoggerDefaultsAndLevelFiltering(t *testing.T) {
+func TestLoggerDefaults(t *testing.T) {
 	var output bytes.Buffer
 	log, err := NewLogger("", WithConsoleWriter(&output))
+	if err != nil {
+		t.Fatalf("NewLogger() error = %v", err)
+	}
+	t.Cleanup(func() { _ = log.Close() })
+
+	log.Debug("debug visible")
+	log.Info("info visible")
+
+	records := decodeJSONRecords(t, output.String())
+	if len(records) != 2 {
+		t.Fatalf("record count = %d, want 2", len(records))
+	}
+	for index, record := range records {
+		if record["app"] != defaultAppName {
+			t.Errorf("record %d default app = %v, want %s", index, record["app"], defaultAppName)
+		}
+	}
+	if records[0]["msg"] != "debug visible" || records[0]["level"] != "debug" {
+		t.Errorf("first record = %#v, want debug/debug visible", records[0])
+	}
+	if records[1]["msg"] != "info visible" || records[1]["level"] != "info" {
+		t.Errorf("second record = %#v, want info/info visible", records[1])
+	}
+}
+
+func TestLoggerLevelFiltering(t *testing.T) {
+	var output bytes.Buffer
+	log, err := NewLogger(
+		"service",
+		WithConsoleWriter(&output),
+		WithLevel(InfoLevel),
+	)
 	if err != nil {
 		t.Fatalf("NewLogger() error = %v", err)
 	}
@@ -60,14 +92,8 @@ func TestLoggerDefaultsAndLevelFiltering(t *testing.T) {
 	log.Info("visible")
 
 	records := decodeJSONRecords(t, output.String())
-	if len(records) != 1 {
-		t.Fatalf("record count = %d, want 1", len(records))
-	}
-	if records[0]["app"] != defaultAppName {
-		t.Errorf("default app = %v, want %s", records[0]["app"], defaultAppName)
-	}
-	if records[0]["msg"] != "visible" {
-		t.Errorf("message = %v, want visible", records[0]["msg"])
+	if len(records) != 1 || records[0]["msg"] != "visible" {
+		t.Fatalf("unexpected filtered records: %#v", records)
 	}
 }
 
@@ -98,8 +124,8 @@ func TestLoggerOptionsAndRotationCopy(t *testing.T) {
 		WithMaxSizeMB(2),
 		WithMaxBackups(1),
 		WithMaxAgeDays(3),
-		WithCompression(false),
-		WithLocalTime(true),
+		WithCompression(),
+		WithLocalTime(),
 	)
 	if err != nil {
 		t.Fatalf("NewRotation() error = %v", err)
@@ -127,6 +153,9 @@ func TestLoggerOptionsAndRotationCopy(t *testing.T) {
 	if log.rotation.MaxSizeMB != 2 {
 		t.Errorf("copied MaxSizeMB = %d, want 2", log.rotation.MaxSizeMB)
 	}
+	if !log.rotation.Compress || !log.rotation.LocalTime {
+		t.Errorf("copied rotation flags were not applied: %+v", log.rotation)
+	}
 	if log.output != ConsoleOutput || log.level != WarnLevel || log.encoding != TextEncoding {
 		t.Errorf("logger options were not applied: output=%v level=%v encoding=%v", log.output, log.level, log.encoding)
 	}
@@ -138,7 +167,7 @@ func TestLoggerOptionsAndRotationCopy(t *testing.T) {
 func TestLoggerConsoleAndFileOutput(t *testing.T) {
 	directory := t.TempDir()
 	var console bytes.Buffer
-	rotation, err := NewRotation(WithCompression(false))
+	rotation, err := NewRotation()
 	if err != nil {
 		t.Fatalf("NewRotation() error = %v", err)
 	}

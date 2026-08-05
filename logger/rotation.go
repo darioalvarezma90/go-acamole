@@ -9,7 +9,7 @@ const (
 	defaultMaxSizeMB  = 100
 	defaultMaxBackups = 5
 	defaultMaxAgeDays = 14
-	defaultCompress   = true
+	defaultCompress   = false
 	defaultLocalTime  = false
 )
 

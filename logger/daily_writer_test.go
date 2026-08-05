@@ -15,7 +15,7 @@ import (
 
 func TestNewDailyWriterRegistersUniqueTarget(t *testing.T) {
 	directory := t.TempDir()
-	rotation, err := NewRotation(WithCompression(false))
+	rotation, err := NewRotation()
 	if err != nil {
 		t.Fatalf("NewRotation() error = %v", err)
 	}

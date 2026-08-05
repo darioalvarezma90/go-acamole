@@ -8,7 +8,7 @@ import (
 )
 
 func TestNewRotationDefaults(t *testing.T) {
-	rotation, err := NewRotation(nil)
+	rotation, err := NewRotation()
 	if err != nil {
 		t.Fatalf("NewRotation() error = %v", err)
 	}
@@ -22,11 +22,11 @@ func TestNewRotationDefaults(t *testing.T) {
 	if rotation.MaxAgeDays != defaultMaxAgeDays {
 		t.Errorf("MaxAgeDays = %d, want %d", rotation.MaxAgeDays, defaultMaxAgeDays)
 	}
-	if rotation.Compress != defaultCompress {
-		t.Errorf("Compress = %v, want %v", rotation.Compress, defaultCompress)
+	if rotation.Compress {
+		t.Error("Compress = true, want false by default")
 	}
-	if rotation.LocalTime != defaultLocalTime {
-		t.Errorf("LocalTime = %v, want %v", rotation.LocalTime, defaultLocalTime)
+	if rotation.LocalTime {
+		t.Error("LocalTime = true, want false by default")
 	}
 }
 
@@ -35,8 +35,8 @@ func TestNewRotationAppliesOptions(t *testing.T) {
 		WithMaxSizeMB(12),
 		WithMaxBackups(3),
 		WithMaxAgeDays(7),
-		WithCompression(false),
-		WithLocalTime(true),
+		WithCompression(),
+		WithLocalTime(),
 	)
 	if err != nil {
 		t.Fatalf("NewRotation() error = %v", err)
@@ -45,11 +45,11 @@ func TestNewRotationAppliesOptions(t *testing.T) {
 	if rotation.MaxSizeMB != 12 || rotation.MaxBackups != 3 || rotation.MaxAgeDays != 7 {
 		t.Fatalf("numeric rotation options were not applied: %+v", rotation)
 	}
-	if rotation.Compress {
-		t.Error("WithCompression(false) was not applied")
+	if !rotation.Compress {
+		t.Error("WithCompression() was not applied")
 	}
 	if !rotation.LocalTime {
-		t.Error("WithLocalTime(true) was not applied")
+		t.Error("WithLocalTime() was not applied")
 	}
 }
 

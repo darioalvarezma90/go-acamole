@@ -102,8 +102,8 @@ rotation, err := logger.NewRotation(
 	logger.WithMaxSizeMB(50),
 	logger.WithMaxBackups(10),
 	logger.WithMaxAgeDays(30),
-	logger.WithCompression(true),
-	logger.WithLocalTime(true),
+	logger.WithCompression(),
+	logger.WithLocalTime(),
 )
 if err != nil {
 	return err
@@ -156,12 +156,15 @@ Los valores predeterminados de rotación son:
 | Tamaño máximo | 100 MB por segmento |
 | Respaldos | 5 archivos terminados |
 | Antigüedad | 14 días |
-| Compresión | gzip habilitado |
+| Compresión | deshabilitada |
 | Zona horaria de nombres | UTC |
 
 Un valor `0` en respaldos o antigüedad deshabilita ese límite. La limpieza se
 ejecuta al abrir un archivo diario o crear un nuevo segmento. Una entrada
 individual puede superar el tamaño máximo porque nunca se divide entre archivos.
+`WithCompression()` habilita gzip para los segmentos terminados y
+`WithLocalTime()` utiliza la zona horaria local en los nombres; sin esas opciones
+se conservan archivos `.log` sin comprimir y se utiliza UTC.
 
 ### Ciclo de vida y consideraciones
 

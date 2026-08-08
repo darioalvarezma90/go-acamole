@@ -254,3 +254,32 @@ func (l *Logger) Fatal(message string, args ...any) {
 	_ = l.Close()
 	os.Exit(1)
 }
+
+// Funciones extra (utilidades)
+func ParseLogLevel(value string) (Level, error) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "debug":
+		return DebugLevel, nil
+	case "info":
+		return InfoLevel, nil
+	case "warn", "warning":
+		return WarnLevel, nil
+	case "error":
+		return ErrorLevel, nil
+	default:
+		return 0, fmt.Errorf("nivel de log inválido: %q", value)
+	}
+}
+
+func ParseLogOutput(value string) (Output, error) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "console":
+		return ConsoleOutput, nil
+	case "file":
+		return FileOutput, nil
+	case "file+console", "console+file":
+		return ConsoleAndFileOutput, nil
+	default:
+		return 0, fmt.Errorf("output de log inválido: %q", value)
+	}
+}

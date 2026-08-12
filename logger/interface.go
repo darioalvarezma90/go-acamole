@@ -7,7 +7,6 @@ type ILogger interface {
 	Info(message string, args ...any)
 	Warn(message string, args ...any)
 	Error(message string, args ...any)
-	Fatal(message string, args ...any)
 }
 
 // Valida en tiempo de compilación si Logger implementa ILogger.

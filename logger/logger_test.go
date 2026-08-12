@@ -4,9 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -229,6 +227,7 @@ func TestNewLoggerRejectsInvalidConfiguration(t *testing.T) {
 		wantInError string
 	}{
 		{name: "blank app", appName: "   ", wantInError: "nombre app"},
+		{name: "padded app", appName: " app", wantInError: "espacios"},
 		{name: "invalid output", appName: "app", options: []LoggerOption{WithOutput(Output(0))}, wantInError: "output"},
 		{name: "invalid level", appName: "app", options: []LoggerOption{WithLevel(Level(255))}, wantInError: "nivel"},
 		{name: "invalid encoding", appName: "app", options: []LoggerOption{WithEncoding(Encoding(255))}, wantInError: "codificacion"},
@@ -285,6 +284,20 @@ func TestLoggerCloseIsIdempotentAndStopsLogging(t *testing.T) {
 	}
 	if err := nilLogger.Sync(); err != nil {
 		t.Errorf("nil Logger.Sync() error = %v", err)
+	}
+}
+
+func TestLoggerExposesMaintenanceError(t *testing.T) {
+	log := &Logger{fileWriter: &dailyWriter{}}
+	want := errors.New("retention failed")
+	log.fileWriter.recordMaintenanceError(want)
+
+	if !errors.Is(log.MaintenanceError(), want) {
+		t.Fatalf("MaintenanceError() = %v, want %v", log.MaintenanceError(), want)
+	}
+	var nilLogger *Logger
+	if nilLogger.MaintenanceError() != nil {
+		t.Fatal("nil Logger.MaintenanceError() != nil")
 	}
 }
 
@@ -363,32 +376,6 @@ func TestLoggerCloseCachesFileError(t *testing.T) {
 	secondErr := log.Close()
 	if secondErr != firstErr {
 		t.Fatalf("second Logger.Close() error = %v, want cached error %v", secondErr, firstErr)
-	}
-}
-
-func TestLoggerFatalExitsWithStatusOne(t *testing.T) {
-	if os.Getenv("LOGGER_FATAL_HELPER") == "1" {
-		log, err := NewLogger("fatal-test")
-		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(2)
-		}
-		log.Fatal("fatal message", "code", 9)
-		return
-	}
-
-	command := exec.Command(os.Args[0], "-test.run=^TestLoggerFatalExitsWithStatusOne$")
-	command.Env = append(os.Environ(), "LOGGER_FATAL_HELPER=1")
-	output, err := command.CombinedOutput()
-	var exitError *exec.ExitError
-	if !errors.As(err, &exitError) {
-		t.Fatalf("helper error = %v, want *exec.ExitError; output=%s", err, output)
-	}
-	if exitError.ExitCode() != 1 {
-		t.Fatalf("exit code = %d, want 1; output=%s", exitError.ExitCode(), output)
-	}
-	if !bytes.Contains(output, []byte("fatal message")) {
-		t.Fatalf("fatal output %q does not contain fatal message", output)
 	}
 }
 

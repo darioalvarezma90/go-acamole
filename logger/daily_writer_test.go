@@ -100,6 +100,39 @@ func TestDailyWriterRotatesBySize(t *testing.T) {
 	}
 }
 
+func TestDailyWriterKeepsOversizedRecordIntact(t *testing.T) {
+	writer := newInMemoryConfiguredWriter(t, time.Date(2026, time.August, 12, 0, 0, 0, 0, time.UTC), 4, false)
+	t.Cleanup(func() { _ = writer.Close() })
+	writer.maxSizeBytes = 4
+
+	if _, err := writer.Write([]byte("oversized")); err != nil {
+		t.Fatalf("oversized Write() error = %v", err)
+	}
+	if writer.currentIndex != 0 || writer.currentSize != int64(len("oversized")) {
+		t.Fatalf("oversized record was split or rotated: index=%d size=%d", writer.currentIndex, writer.currentSize)
+	}
+	if _, err := writer.Write([]byte("next")); err != nil {
+		t.Fatalf("next Write() error = %v", err)
+	}
+	if writer.currentIndex != 1 {
+		t.Fatalf("next record index = %d, want 1", writer.currentIndex)
+	}
+}
+
+func TestDailyWriterExposesMaintenanceError(t *testing.T) {
+	writer := &dailyWriter{}
+	want := errors.New("cleanup failed")
+	writer.recordMaintenanceError(want)
+
+	if !errors.Is(writer.MaintenanceError(), want) {
+		t.Fatalf("MaintenanceError() = %v, want %v", writer.MaintenanceError(), want)
+	}
+	var nilWriter *dailyWriter
+	if nilWriter.MaintenanceError() != nil {
+		t.Fatal("nil dailyWriter.MaintenanceError() != nil")
+	}
+}
+
 func TestDailyWriterConcurrentWrites(t *testing.T) {
 	now := time.Date(2026, time.August, 3, 12, 0, 0, 0, time.UTC)
 	writer := newInMemoryConfiguredWriter(t, now, 1<<20, false)

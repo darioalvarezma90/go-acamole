@@ -28,21 +28,22 @@ var activeDailyWriters = struct {
 // dailyWriter escribe en un archivo por día y crea segmentos adicionales
 // cuando el archivo activo supera el tamaño configurado.
 type dailyWriter struct {
-	mutex        sync.Mutex
-	directory    string
-	baseName     string
-	maxSizeBytes int64
-	maxBackups   int
-	maxAgeDays   int
-	compress     bool
-	localTime    bool
-	now          func() time.Time
-	file         *os.File
-	currentDate  string
-	currentIndex int
-	currentSize  int64
-	closed       bool
-	registryKey  string
+	mutex          sync.Mutex
+	directory      string
+	baseName       string
+	maxSizeBytes   int64
+	maxBackups     int
+	maxAgeDays     int
+	compress       bool
+	localTime      bool
+	now            func() time.Time
+	file           *os.File
+	currentDate    string
+	currentIndex   int
+	currentSize    int64
+	closed         bool
+	registryKey    string
+	maintenanceErr error
 }
 
 type dailyLogFile struct {
@@ -187,8 +188,9 @@ func (w *dailyWriter) openDate(date string, now time.Time) error {
 	}
 
 	// La limpieza es de mejor esfuerzo para no perder el registro actual si un
-	// archivo antiguo no puede eliminarse.
-	_ = w.cleanup(now)
+	// archivo antiguo no puede eliminarse. El error queda disponible para que el
+	// propietario pueda observarlo sin interrumpir las escrituras.
+	w.recordMaintenanceError(w.cleanup(now))
 	return nil
 }
 
@@ -222,8 +224,26 @@ func (w *dailyWriter) openNextSegment(now time.Time) error {
 		return err
 	}
 
-	_ = w.cleanup(now)
+	w.recordMaintenanceError(w.cleanup(now))
 	return nil
+}
+
+// MaintenanceError devuelve el fallo de mantenimiento más reciente.
+func (w *dailyWriter) MaintenanceError() error {
+	if w == nil {
+		return nil
+	}
+	w.mutex.Lock()
+	defer w.mutex.Unlock()
+	return w.maintenanceErr
+}
+
+// recordMaintenanceError conserva el error de limpieza más reciente. El
+// llamador ya mantiene mutex cuando se invoca durante una escritura.
+func (w *dailyWriter) recordMaintenanceError(err error) {
+	if err != nil {
+		w.maintenanceErr = err
+	}
 }
 
 // finishCurrent cierra el segmento activo y lo comprime cuando corresponde.

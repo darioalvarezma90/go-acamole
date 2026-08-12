@@ -147,6 +147,9 @@ func (l *Logger) validate() error {
 	if strings.TrimSpace(l.appName) == "" {
 		return fmt.Errorf("nombre app inválido")
 	}
+	if strings.TrimSpace(l.appName) != l.appName {
+		return fmt.Errorf("nombre app no puede contener espacios al inicio o al final")
+	}
 	if !l.output.isValid() {
 		return fmt.Errorf("tipo de output invalido")
 	}
@@ -213,6 +216,15 @@ func (l *Logger) Sync() error {
 	return l.fileWriter.Sync()
 }
 
+// MaintenanceError devuelve el error más reciente producido al aplicar la
+// retención de archivos antiguos. Estos fallos no interrumpen las escrituras.
+func (l *Logger) MaintenanceError() error {
+	if l == nil || l.fileWriter == nil {
+		return nil
+	}
+	return l.fileWriter.MaintenanceError()
+}
+
 // canLog indica si el registrador está listo para aceptar nuevas entradas.
 func (l *Logger) canLog() bool {
 	return l != nil && l.driver != nil && !l.closed.Load()
@@ -244,15 +256,6 @@ func (l *Logger) Error(message string, args ...any) {
 	if l.canLog() {
 		l.driver.Errorw(message, args...)
 	}
-}
-
-// Fatal registra un error, cierra el registrador y termina el proceso con código 1.
-func (l *Logger) Fatal(message string, args ...any) {
-	if l.canLog() {
-		l.driver.Errorw(message, args...)
-	}
-	_ = l.Close()
-	os.Exit(1)
 }
 
 // Funciones extra (utilidades)

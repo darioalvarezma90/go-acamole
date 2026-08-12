@@ -22,6 +22,7 @@ func TestNewServerRejectsInvalidConfiguration(t *testing.T) {
 		wantInError string
 	}{
 		{name: "blank address", address: " ", wantInError: "direccion"},
+		{name: "padded address", address: " 127.0.0.1:0", wantInError: "espacios"},
 		{name: "blank network", address: "127.0.0.1:0", options: []ServerOption{WithNetwork(" ")}, wantInError: "red"},
 		{name: "padded network", address: "127.0.0.1:0", options: []ServerOption{WithNetwork(" tcp")}, wantInError: "espacios"},
 		{name: "nil grpc option", address: "127.0.0.1:0", options: []ServerOption{WithGRPCOptions(nil)}, wantInError: "posicion 0"},

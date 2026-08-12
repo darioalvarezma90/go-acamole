@@ -1,5 +1,3 @@
-// Package grpc proporciona un servidor gRPC reutilizable construido sobre
-// grpc-go, con listener configurable y apagado graceful limitado por contexto.
 package grpc
 
 import (
@@ -92,6 +90,9 @@ func (s *Server) validate() error {
 	}
 	if strings.TrimSpace(s.address) == "" {
 		return fmt.Errorf("direccion no puede estar vacía")
+	}
+	if strings.TrimSpace(s.address) != s.address {
+		return fmt.Errorf("direccion no puede contener espacios al inicio o al final")
 	}
 	if strings.TrimSpace(s.network) == "" {
 		return fmt.Errorf("red no puede estar vacía")

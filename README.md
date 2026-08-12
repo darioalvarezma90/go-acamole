@@ -32,7 +32,7 @@ go get github.com/darioalvarezma90/go-acamole/grpc
 
 El paquete permite:
 
-- registrar mensajes con niveles `Debug`, `Info`, `Warn`, `Error` y `Fatal`;
+- registrar mensajes con niveles `Debug`, `Info`, `Warn` y `Error`;
 - generar una línea JSON por evento o usar texto legible;
 - escribir en consola, archivo o ambos destinos;
 - crear un archivo por día y segmentos adicionales al alcanzar el tamaño máximo;
@@ -57,7 +57,6 @@ type ILogger interface {
 	Info(message string, args ...any)
 	Warn(message string, args ...any)
 	Error(message string, args ...any)
-	Fatal(message string, args ...any)
 }
 ```
 
@@ -93,7 +92,8 @@ func main() {
 
 La configuración predeterminada escribe en `os.Stdout`, utiliza nivel `Debug` y
 codificación JSON. Si el nombre de la aplicación está vacío, se utiliza
-`go-app`.
+`go-app`; un nombre formado por espacios o con espacios laterales se rechaza.
+Cada registro incluye el campo base `app` con ese nombre.
 
 ### Consola y archivos con rotación
 
@@ -133,7 +133,8 @@ logs/orders-04-08-2026.log
 ```
 
 La extensión `.log` en `WithFileName` es opcional. El paquete agrega
-automáticamente la fecha y, cuando corresponde, el índice del segmento.
+automáticamente la fecha y, cuando corresponde, el índice del segmento. El
+nombre base no puede incluir directorios.
 
 ### Opciones disponibles
 
@@ -148,6 +149,11 @@ Las opciones principales de `NewLogger` son:
 | `WithDirectory` | Define el directorio de archivos; el valor predeterminado es `./logs`. |
 | `WithFileName` | Define el nombre base; de forma predeterminada se usa el nombre de la aplicación. |
 | `WithRotation` | Aplica una configuración creada mediante `NewRotation`. |
+
+`ParseLogLevel` interpreta, sin distinguir mayúsculas, `debug`, `info`, `warn`,
+`warning` y `error`. `ParseLogOutput` acepta `console`, `file`, `file+console` y
+`console+file`; ambos eliminan espacios laterales y devuelven error para valores
+desconocidos.
 
 Los valores predeterminados de rotación son:
 
@@ -171,9 +177,12 @@ se conservan archivos `.log` sin comprimir y se utiliza UTC.
 - Se debe llamar a `Close` para sincronizar y cerrar el archivo activo. `Close`
   es idempotente y puede invocarse desde distintas goroutines.
 - `Sync` fuerza la persistencia del archivo activo sin cerrar el logger.
+- `MaintenanceError` permite consultar el último fallo al eliminar archivos por
+  retención. Conserva el último fallo observado y estos errores no interrumpen
+  las escrituras.
 - Después de `Close`, las nuevas llamadas de registro se ignoran.
-- `Fatal` registra el mensaje, cierra el logger y termina el proceso mediante
-  `os.Exit(1)`; por ello, los `defer` pendientes de la aplicación no se ejecutan.
+- El paquete no termina el proceso. La aplicación decide cuándo utilizar
+  `log.Fatal`, `os.Exit` o propagar un error, después de cerrar sus recursos.
 - Dentro de un mismo proceso no se permiten dos loggers que escriban en la misma
   combinación de directorio y nombre base. Esta protección no coordina procesos
   distintos.
@@ -185,7 +194,10 @@ se conservan archivos `.log` sin comprimir y se utiliza UTC.
 `mongodb` administra un `*mongo.Client` del driver oficial v2 y la base de datos
 seleccionada. El contrato del cliente se expone mediante `IClient`. `NewClient`
 crea el driver y, de forma predeterminada, ejecuta `Ping` para verificar
-conectividad antes de devolverlo.
+conectividad antes de devolverlo. La URI y el nombre de la base de datos son
+obligatorios y no pueden contener espacios laterales. Con
+`WithConnectionCheck(false)` se omite esa verificación inicial, por lo que la
+construcción no garantiza que el deployment sea alcanzable.
 
 ```go
 package main
@@ -229,9 +241,13 @@ func main() {
 
 ### TLS mutuo y autenticación X.509
 
-`NewTLS` carga una CA, certificado cliente y llave privada PEM. Acepta llaves
-PKCS#8 sin cifrar o `ENCRYPTED PRIVATE KEY`; la contraseña se conserva sólo
-durante la construcción y la copia interna se sobrescribe después.
+`NewTLS` carga una CA, un certificado cliente y una única llave privada PEM.
+Acepta llaves PKCS#8, PKCS#1 RSA y SEC1 EC sin cifrar, además de PKCS#8 cifrado
+como `ENCRYPTED PRIVATE KEY`. Rechaza el cifrado PEM legado y archivos con más
+de una llave privada. La contraseña se conserva sólo durante la construcción y
+la copia interna se sobrescribe después. La configuración resultante exige TLS
+1.2 o superior y valida el servidor contra la CA proporcionada; un
+`WithTLSServerName` no vacío sustituye el nombre inferido por el driver.
 
 ```go
 tlsConfiguration, err := mongodb.NewTLS(
@@ -268,11 +284,15 @@ Opciones de `NewClient`:
 | `WithMinPoolSize`, `WithMaxPoolSize` | Configuran el pool por servidor. |
 | `WithTLS` | Aplica una configuración creada por `NewTLS`. |
 | `WithX509Authentication` | Usa el certificado cliente como identidad MongoDB-X509. |
-| `WithDriverOptions` | Agrega opciones avanzadas del driver, salvo otro URI. |
+| `WithDriverOptions` | Agrega copias de opciones avanzadas del driver; no permite definir otro URI. |
 
 `Driver` y `Database` exponen los tipos oficiales; no debe llamarse
 `Disconnect` directamente sobre `Driver`. `Close` es idempotente y conserva el
-resultado del primer intento. `Ping` rechaza contextos `nil` y clientes cerrados.
+resultado del primer intento, incluso si ese intento falla o su contexto vence;
+no se realiza un segundo `Disconnect`. `Ping` rechaza contextos `nil` y clientes
+cerrados.
+Después de construir el driver, el wrapper elimina su copia de la URI para no
+retener credenciales innecesariamente.
 
 ### Tipo `Repository`
 
@@ -388,7 +408,10 @@ Si el cierre del cliente interrumpe una operación, el error conserva tanto
 
 `postgresql` administra un `*pgxpool.Pool` mediante el contrato `IClient`.
 Acepta cadenas de conexión URL o libpq, valida la configuración resultante y
-ejecuta `Ping` por defecto.
+ejecuta `Ping` por defecto. La cadena es obligatoria, no admite espacios
+laterales y se elimina de la estructura del wrapper después de interpretarla.
+Con `WithConnectionCheck(false)` se crea el pool sin comprobar que PostgreSQL
+sea alcanzable.
 
 ```go
 package main
@@ -432,15 +455,15 @@ Opciones de `NewClient`:
 | --- | --- |
 | `WithConnectionCheck` | Habilita o deshabilita el `Ping` inicial; está habilitado por defecto. |
 | `WithApplicationName` | Configura `application_name`. |
-| `WithConnectTimeout` | Limita la apertura de una conexión. |
+| `WithConnectTimeout` | Limita la apertura de una conexión; cero deshabilita el timeout. |
 | `WithMaxConnections` | Establece el máximo del pool. |
 | `WithMinConnections` | Establece el mínimo del pool. |
 | `WithMinIdleConnections` | Establece el mínimo de conexiones inactivas. |
-| `WithMaxConnectionLifetime` | Limita la vida de cada conexión. |
-| `WithMaxConnectionLifetimeJitter` | Distribuye el vencimiento de conexiones. |
-| `WithMaxConnectionIdleTime` | Limita el tiempo inactivo. |
+| `WithMaxConnectionLifetime` | Limita la vida de cada conexión; cero deshabilita el límite. |
+| `WithMaxConnectionLifetimeJitter` | Distribuye el vencimiento de conexiones; admite cero. |
+| `WithMaxConnectionIdleTime` | Limita el tiempo inactivo; cero deshabilita el límite. |
 | `WithHealthCheckPeriod` | Configura la frecuencia de revisión del pool. |
-| `WithPingTimeout` | Limita los health checks internos. |
+| `WithPingTimeout` | Limita los health checks internos; cero no agrega timeout. |
 | `WithTLSConfig` | Aplica `tls.Config`, exige TLS y elimina fallbacks sin cifrado. |
 | `WithRequireTLS` | Rechaza configuraciones que todavía permitan transporte sin TLS. |
 | `WithPoolConfigurer` | Modifica de forma avanzada el `pgxpool.Config` antes de validarlo. |
@@ -450,8 +473,17 @@ Opciones de `NewClient`:
 transporte cifrado; para validar también hostname y confianza use
 `sslmode=verify-full` o `WithTLSConfig`.
 
+Los `PoolConfigurer` se ejecutan en el orden registrado después de
+`pgxpool.ParseConfig`. Si se usa `WithTLSConfig`, su copia segura se aplica
+después de esos configuradores para impedir que restauren accidentalmente un
+fallback sin TLS. El máximo del pool debe ser mayor que cero; mínimos y
+duraciones no pueden ser negativos, el periodo de health check debe ser mayor
+que cero y los mínimos no pueden superar el máximo.
+
 `Driver` no debe cerrarse directamente. `Close` es idempotente, seguro entre
-goroutines y espera que se liberen las conexiones adquiridas del pool.
+goroutines, no devuelve error y espera que se liberen las conexiones adquiridas
+del pool. `Ping` rechaza contextos `nil` y distingue `ErrClientUnavailable` de
+`ErrClientClosed`; estos errores pueden comprobarse con `errors.Is`.
 
 ## Paquete `rabbitmq`
 
@@ -496,6 +528,9 @@ func main() {
 		rabbitmq.WithErrorHandler(func(err error) {
 			log.Printf("mensaje rechazado: %v", err)
 		}),
+		rabbitmq.WithEventHandler(func(event rabbitmq.Event) {
+			log.Printf("evento rabbitmq: tipo=%s cola=%s error=%v", event.Type, event.Queue, event.Err)
+		}),
 	)
 	if err != nil {
 		log.Fatal(err)
@@ -508,8 +543,9 @@ func main() {
 
 	err = server.RegisterConsumer(
 		"orders",
-		func(ctx context.Context, delivery amqp.Delivery) error {
-			return processOrder(ctx, delivery.Body)
+		func(_ context.Context, delivery amqp.Delivery) error {
+			log.Printf("pedido recibido: %s", delivery.Body)
+			return nil
 		},
 		rabbitmq.WithConsumerConcurrency(4),
 		rabbitmq.WithPrefetch(8, 0, false),
@@ -529,6 +565,9 @@ Comportamiento relevante:
 
 - Con `autoAck` deshabilitado, que es el valor predeterminado, el servidor hace
   `Ack` cuando el handler devuelve `nil` y `Nack` cuando devuelve un error.
+- Con `autoAck` habilitado, el broker confirma el mensaje antes de entregarlo:
+  el servidor todavía informa errores del handler, pero ya no puede ejecutar
+  `Nack` ni recuperar una entrega fallida. En ese modo tampoco aplica QoS.
 - Los errores reencolan el mensaje de forma predeterminada. Para evitar ciclos
   con mensajes inválidos, configure una dead-letter queue o utilice
   `WithRequeueOnError(false)`.
@@ -537,14 +576,22 @@ Comportamiento relevante:
   rapidez y no debe usarse como worker adicional.
 - Un pánico del handler se recupera, se informa mediante `WithErrorHandler` y se
   procesa como un error normal.
+- El handler no debe llamar `Ack`, `Nack` o `Reject`; el servidor es propietario
+  de las confirmaciones. Los fallos de `Ack` o `Nack` son errores de
+  infraestructura y hacen terminar `Serve`.
 - `WithConsumerConcurrency` crea un canal independiente por worker;
-  `WithPrefetch` se aplica a cada uno. Un consumidor exclusivo sólo admite
-  concurrencia `1` y no puede combinarse con otro consumidor registrado para la
-  misma cola.
+  `WithPrefetch` se aplica a cada uno cuando `autoAck` está deshabilitado. Un
+  consumidor exclusivo sólo admite concurrencia `1` y no puede combinarse con
+  otro consumidor registrado para la misma cola.
+- Los configuradores de topología se ejecutan en orden, sobre un canal dedicado,
+  antes de crear consumidores. Los consumidores deben registrarse antes de
+  `Serve`, y `Serve` devuelve `ErrNoConsumers` si no se registró ninguno.
 - `Serve` sólo puede ejecutarse una vez. Al cancelar su contexto o llamar a
   `Shutdown`, se cancelan los consumidores, terminan los handlers cooperativos y
   se cierra la conexión. El cierre interno de `Serve` está limitado a cinco
   segundos; `Shutdown` respeta cancelación y deadline del contexto recibido.
+- Los cierres concurrentes comparten una sola operación sobre el driver, pero
+  cada llamada a `Shutdown` espera únicamente hasta el deadline de su contexto.
 - `Driver` expone `*amqp.Connection` para casos avanzados. Para cargas sostenidas
   conviene usar conexiones distintas para publicación y consumo, como recomienda
   el driver oficial. No cierre la conexión devuelta; use `Shutdown`.
@@ -559,6 +606,24 @@ Opciones del servidor:
 | `WithConnectionName` | Define el nombre visible en RabbitMQ Management. |
 | `WithTopologyConfigurer` | Declara exchanges, colas y bindings antes de consumir. |
 | `WithErrorHandler` | Observa errores de handlers y pánicos recuperados. |
+| `WithEventHandler` | Observa inicio/parada del servidor y consumidores, además de errores de infraestructura. |
+
+`WithErrorHandler` recibe un `*HandlerError`, compatible con `errors.As`, que
+incluye `Queue`, `ConsumerTag`, `DeliveryTag` y conserva la causa mediante
+`Unwrap`. Puede ejecutarse concurrentemente desde distintos workers. Sus pánicos
+se recuperan, pero debe ser seguro para concurrencia y retornar rápidamente.
+
+`WithEventHandler` recibe valores `Event` y también puede ejecutarse
+concurrentemente. Sus pánicos se recuperan; el callback debe ser seguro para
+concurrencia y retornar rápidamente. `Event.Type` es un `EventType` y sus valores
+posibles son:
+
+| Tipo | Campos relevantes |
+| --- | --- |
+| `EventServerStarted` | Todos los consumidores se iniciaron. |
+| `EventServerStopped` | `Err` contiene el resultado final de `Serve`, si existe. |
+| `EventConsumerStarted`, `EventConsumerStopped` | `Queue` y `ConsumerTag` identifican el worker. |
+| `EventInfrastructureError` | `Err` contiene un fallo no causado por cancelación normal del contexto. |
 
 Opciones de cada consumidor:
 
@@ -572,6 +637,12 @@ Opciones de cada consumidor:
 | `WithConsumerNoWait` | Omite la confirmación de `basic.consume`. |
 | `WithConsumerArguments` | Agrega argumentos AMQP y copia tablas, slices y bytes mutables. |
 | `WithRequeueOnError` | Controla el requeue tras error; está habilitado por defecto. |
+
+Los errores de ciclo de vida exportados son `ErrNilContext`, `ErrServerClosed`,
+`ErrServerRunning`, `ErrServerAlreadyServed`, `ErrServerUnavailable` y
+`ErrNoConsumers`. Los errores de contexto y las causas del driver se conservan
+para `errors.Is`; `HandlerError` conserva su causa y puede identificarse con
+`errors.As`.
 
 ## Paquete `grpc`
 
@@ -593,12 +664,13 @@ import (
 
 	utilgrpc "github.com/darioalvarezma90/go-acamole/grpc"
 	grpcgo "google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 )
 
 func main() {
 	server, err := utilgrpc.NewServer(
 		":50051",
-		utilgrpc.WithUnaryInterceptors(requestLogger),
 		utilgrpc.WithGRPCOptions(
 			grpcgo.MaxRecvMsgSize(4 << 20),
 		),
@@ -607,7 +679,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	ordersv1.RegisterOrdersServer(server.Driver(), newOrdersService())
+	healthpb.RegisterHealthServer(server.Driver(), health.NewServer())
 
 	serveErrors := make(chan error, 1)
 	go func() {
@@ -656,6 +728,14 @@ Opciones de `NewServer`:
 
 Cada instancia es de un solo uso: después de iniciar `Serve`, no puede iniciarse
 otra vez. `Serve` toma propiedad del listener y `grpc-go` lo cierra al terminar.
+`ListenAndServe` crea el listener con la red configurada, mientras que `Serve`
+acepta uno ya creado y rechaza valores `nil`.
+
+Los errores de ciclo de vida exportados son `ErrNilContext`, `ErrNilListener`,
+`ErrServerClosed`, `ErrServerRunning`, `ErrServerAlreadyServed` y
+`ErrServerUnavailable`. `Shutdown` es idempotente y seguro para llamadas
+concurrentes; una vez iniciado el apagado, la instancia queda cerrada aunque
+nunca haya llegado a servir solicitudes.
 
 ## Pruebas
 
@@ -668,6 +748,7 @@ go test ./...
 Las integraciones externas se omiten cuando sus variables no están definidas:
 
 ```bash
+MONGODB_TEST_URI='mongodb://...' go test ./mongodb
 POSTGRESQL_TEST_DSN='postgres://...' go test ./postgresql
 RABBITMQ_TEST_URL='amqp://...' go test ./rabbitmq
 ```
@@ -678,3 +759,11 @@ de C disponibles:
 ```bash
 go test -race ./...
 ```
+
+El directorio [`examples`](./examples) contiene programas compilables para cada
+paquete. La compatibilidad y los cambios sin publicar se documentan en
+[`COMPATIBILITY.md`](./COMPATIBILITY.md) y [`CHANGELOG.md`](./CHANGELOG.md).
+
+Las interfaces exportadas se conservan para quienes deseen utilizarlas, aunque
+en código de aplicación suele ser preferible declarar interfaces pequeñas junto
+al consumidor y depender sólo de los métodos necesarios.

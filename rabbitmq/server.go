@@ -1,5 +1,3 @@
-// Package rabbitmq proporciona un servidor reutilizable de consumidores
-// construido sobre el driver oficial amqp091-go.
 package rabbitmq
 
 import (
@@ -38,6 +36,19 @@ var (
 	ErrNoConsumers = errors.New("servidor rabbitmq no tiene consumidores")
 )
 
+// consumerChannel contiene la parte del canal AMQP utilizada por los workers.
+// Mantener este límite interno permite probar fallos parciales sin un broker.
+type consumerChannel interface {
+	Qos(prefetchCount, prefetchSize int, global bool) error
+	ConsumeWithContext(
+		ctx context.Context,
+		queue, name string,
+		autoAck, exclusive, noLocal, noWait bool,
+		args amqp.Table,
+	) (<-chan amqp.Delivery, error)
+	Close() error
+}
+
 // Server administra una conexión AMQP y canales de consumo dedicados. Puede
 // compartirse entre goroutines; los consumidores deben registrarse antes de
 // invocar Serve.
@@ -50,21 +61,27 @@ type Server struct {
 	topologyConfigurers      []TopologyConfigurer
 	errorHandler             ErrorHandler
 	errorHandlerConfigured   bool
+	eventHandler             EventHandler
+	eventHandlerConfigured   bool
 
-	driver *amqp.Connection
+	driver                *amqp.Connection
+	openConsumerChannel   func() (consumerChannel, error)
+	notifyConnectionClose func(chan *amqp.Error) <-chan *amqp.Error
 
 	stateMutex       sync.Mutex
 	consumers        []*consumer
-	consumerChannels []*amqp.Channel
+	consumerChannels []consumerChannel
 	running          bool
 	served           bool
 	serveCancel      context.CancelFunc
 	done             chan struct{}
 	doneOnce         sync.Once
 
-	closeMutex sync.Mutex
-	closed     atomic.Bool
-	closeErr   error
+	closeOnce   sync.Once
+	closeDone   chan struct{}
+	closeDriver func(time.Time, bool) error
+	closed      atomic.Bool
+	closeErr    error
 }
 
 // NewServer establece una conexión con RabbitMQ. La conexión confirma que el
@@ -73,7 +90,9 @@ func NewServer(uri string, opts ...ServerOption) (*Server, error) {
 	server := &Server{
 		uri:          uri,
 		errorHandler: func(error) {},
+		eventHandler: func(Event) {},
 		done:         make(chan struct{}),
+		closeDone:    make(chan struct{}),
 	}
 
 	for _, opt := range opts {
@@ -91,6 +110,21 @@ func NewServer(uri string, opts ...ServerOption) (*Server, error) {
 		return nil, fmt.Errorf("error conectando con rabbitmq: %w", err)
 	}
 	server.driver = driver
+	server.openConsumerChannel = func() (consumerChannel, error) {
+		return driver.Channel()
+	}
+	server.notifyConnectionClose = func(receiver chan *amqp.Error) <-chan *amqp.Error {
+		return driver.NotifyClose(receiver)
+	}
+	server.closeDriver = func(deadline time.Time, useDeadline bool) error {
+		if driver.IsClosed() {
+			return nil
+		}
+		if useDeadline {
+			return driver.CloseDeadline(deadline)
+		}
+		return driver.Close()
+	}
 	return server, nil
 }
 
@@ -101,6 +135,9 @@ func (s *Server) validate() error {
 	}
 	if strings.TrimSpace(s.uri) == "" {
 		return fmt.Errorf("uri no puede estar vacío")
+	}
+	if strings.TrimSpace(s.uri) != s.uri {
+		return fmt.Errorf("uri no puede contener espacios al inicio o al final")
 	}
 	parsedURI, err := amqp.ParseURI(s.uri)
 	if err != nil {
@@ -133,6 +170,9 @@ func (s *Server) validate() error {
 	}
 	if s.errorHandlerConfigured && s.errorHandler == nil {
 		return fmt.Errorf("error handler no puede ser nil")
+	}
+	if s.eventHandlerConfigured && s.eventHandler == nil {
+		return fmt.Errorf("event handler no puede ser nil")
 	}
 	for index, configure := range s.topologyConfigurers {
 		if configure == nil {
@@ -267,6 +307,10 @@ func (s *Server) Serve(ctx context.Context) (serveErr error) {
 		s.running = false
 		s.serveCancel = nil
 		s.stateMutex.Unlock()
+		if serveErr != nil && !errors.Is(serveErr, context.Canceled) && !errors.Is(serveErr, context.DeadlineExceeded) {
+			s.reportEvent(Event{Type: EventInfrastructureError, Err: serveErr})
+		}
+		s.reportEvent(Event{Type: EventServerStopped, Err: serveErr})
 		s.signalDone()
 	}()
 
@@ -278,8 +322,9 @@ func (s *Server) Serve(ctx context.Context) (serveErr error) {
 	if err := s.startConsumers(serveContext, consumers, workerErrors, &workers); err != nil {
 		return err
 	}
+	s.reportEvent(Event{Type: EventServerStarted})
 
-	connectionClosed := s.driver.NotifyClose(make(chan *amqp.Error, 1))
+	connectionClosed := s.connectionCloseNotifications()
 	select {
 	case <-serveContext.Done():
 		if ctx.Err() != nil {
@@ -334,7 +379,7 @@ func (s *Server) startConsumers(
 ) error {
 	for _, configuration := range consumers {
 		for workerIndex := range configuration.concurrency {
-			channel, err := s.driver.Channel()
+			channel, err := s.newConsumerChannel()
 			if err != nil {
 				return fmt.Errorf("error creando canal para cola %q: %w", configuration.queue, err)
 			}
@@ -350,10 +395,11 @@ func (s *Server) startConsumers(
 				}
 			}
 
+			workerTag := configuration.workerTag(workerIndex)
 			deliveries, err := channel.ConsumeWithContext(
 				ctx,
 				configuration.queue,
-				configuration.workerTag(workerIndex),
+				workerTag,
 				configuration.autoAck,
 				configuration.exclusive,
 				false,
@@ -366,7 +412,7 @@ func (s *Server) startConsumers(
 
 			workers.Add(1)
 			ready := make(chan struct{})
-			go s.consume(ctx, configuration, deliveries, workerErrors, workers, ready)
+			go s.consume(ctx, configuration, workerTag, deliveries, workerErrors, workers, ready)
 			<-ready
 		}
 	}
@@ -377,12 +423,15 @@ func (s *Server) startConsumers(
 func (s *Server) consume(
 	ctx context.Context,
 	configuration *consumer,
+	workerTag string,
 	deliveries <-chan amqp.Delivery,
 	workerErrors chan<- error,
 	workers *sync.WaitGroup,
 	ready chan<- struct{},
 ) {
 	defer workers.Done()
+	s.reportEvent(Event{Type: EventConsumerStarted, Queue: configuration.queue, ConsumerTag: workerTag})
+	defer s.reportEvent(Event{Type: EventConsumerStopped, Queue: configuration.queue, ConsumerTag: workerTag})
 	close(ready)
 	for delivery := range deliveries {
 		if err := s.processDelivery(ctx, configuration, delivery); err != nil {
@@ -393,6 +442,18 @@ func (s *Server) consume(
 	if ctx.Err() == nil && !s.closed.Load() {
 		workerErrors <- fmt.Errorf("entregas para cola %q se cerraron inesperadamente", configuration.queue)
 	}
+}
+
+// reportEvent entrega eventos opcionales sin permitir que un callback externo
+// interrumpa el ciclo de vida del servidor.
+func (s *Server) reportEvent(event Event) {
+	if s == nil || s.eventHandler == nil {
+		return
+	}
+	defer func() {
+		_ = recover()
+	}()
+	s.eventHandler(event)
 }
 
 // processDelivery ejecuta el manejador y aplica la política de confirmación configurada.
@@ -452,10 +513,30 @@ func (s *Server) reportHandlerError(queue string, delivery amqp.Delivery, err er
 }
 
 // addConsumerChannel registra un canal para poder cerrarlo durante el apagado.
-func (s *Server) addConsumerChannel(channel *amqp.Channel) {
+func (s *Server) addConsumerChannel(channel consumerChannel) {
 	s.stateMutex.Lock()
 	defer s.stateMutex.Unlock()
 	s.consumerChannels = append(s.consumerChannels, channel)
+}
+
+// newConsumerChannel abre un canal mediante el driver o el factory interno.
+func (s *Server) newConsumerChannel() (consumerChannel, error) {
+	if s.openConsumerChannel != nil {
+		return s.openConsumerChannel()
+	}
+	if s.driver == nil {
+		return nil, ErrServerUnavailable
+	}
+	return s.driver.Channel()
+}
+
+// connectionCloseNotifications obtiene las notificaciones de cierre del driver.
+func (s *Server) connectionCloseNotifications() <-chan *amqp.Error {
+	receiver := make(chan *amqp.Error, 1)
+	if s.notifyConnectionClose != nil {
+		return s.notifyConnectionClose(receiver)
+	}
+	return s.driver.NotifyClose(receiver)
 }
 
 // closeConsumerChannels cierra todos los canales de consumidores registrados.
@@ -471,24 +552,45 @@ func (s *Server) closeConsumerChannels() {
 	}
 }
 
-// closeConnection cierra de forma idempotente la conexión con el broker.
+// closeConnection inicia una única operación de cierre y permite que cada
+// llamador espere con su propio contexto, sin bloquear detrás de un mutex.
 func (s *Server) closeConnection(ctx context.Context) error {
-	s.closeMutex.Lock()
-	defer s.closeMutex.Unlock()
-	if s.driver == nil || s.driver.IsClosed() {
-		return s.closeErr
-	}
+	done := s.closeDoneChannel()
+	s.closeOnce.Do(func() {
+		deadline, useDeadline := connectionCloseDeadline(ctx)
+		go func() {
+			var err error
+			switch {
+			case s.closeDriver != nil:
+				err = s.closeDriver(deadline, useDeadline)
+			case s.driver != nil && !s.driver.IsClosed() && useDeadline:
+				err = s.driver.CloseDeadline(deadline)
+			case s.driver != nil && !s.driver.IsClosed():
+				err = s.driver.Close()
+			}
+			if err != nil && !errors.Is(err, amqp.ErrClosed) {
+				s.closeErr = fmt.Errorf("error cerrando conexion rabbitmq: %w", err)
+			}
+			close(done)
+		}()
+	})
 
-	var err error
-	if deadline, ok := connectionCloseDeadline(ctx); ok {
-		err = s.driver.CloseDeadline(deadline)
-	} else {
-		err = s.driver.Close()
+	select {
+	case <-done:
+		return s.closeErr
+	case <-ctx.Done():
+		return ctx.Err()
 	}
-	if err != nil && !errors.Is(err, amqp.ErrClosed) {
-		s.closeErr = fmt.Errorf("error cerrando conexion rabbitmq: %w", err)
+}
+
+// closeDoneChannel devuelve el canal compartido de finalización del cierre.
+func (s *Server) closeDoneChannel() chan struct{} {
+	s.stateMutex.Lock()
+	defer s.stateMutex.Unlock()
+	if s.closeDone == nil {
+		s.closeDone = make(chan struct{})
 	}
-	return s.closeErr
+	return s.closeDone
 }
 
 // connectionCloseDeadline obtiene un límite utilizable para cerrar la conexión.

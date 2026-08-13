@@ -92,6 +92,9 @@ func (c *consumer) validate() error {
 	if strings.TrimSpace(c.queue) == "" {
 		return fmt.Errorf("nombre de cola no puede estar vacío")
 	}
+	if strings.TrimSpace(c.queue) != c.queue {
+		return fmt.Errorf("nombre de cola no puede contener espacios al inicio o al final")
+	}
 	if c.handler == nil {
 		return fmt.Errorf("handler no puede ser nil")
 	}

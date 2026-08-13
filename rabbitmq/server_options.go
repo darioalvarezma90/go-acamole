@@ -73,6 +73,15 @@ func WithErrorHandler(handler ErrorHandler) ServerOption {
 	}
 }
 
+// WithEventHandler observa inicio y parada de servidores y consumidores, así
+// como errores de infraestructura. Los pánicos del callback son recuperados.
+func WithEventHandler(handler EventHandler) ServerOption {
+	return func(server *Server) {
+		server.eventHandlerConfigured = true
+		server.eventHandler = handler
+	}
+}
+
 // cloneAMQPConfig devuelve una copia independiente de la configuración AMQP.
 func cloneAMQPConfig(configuration amqp.Config) amqp.Config {
 	result := configuration

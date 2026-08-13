@@ -100,6 +100,9 @@ func NewClient(
 // connect encapsula la configuración e instanciación del driver oficial.
 func (c *Client) connect() error {
 	defer func() {
+		// La URI puede contener credenciales. El driver conserva únicamente la
+		// configuración que necesita; el wrapper no debe mantener otra copia.
+		c.uri = ""
 		clear(c.driverOptions)
 		c.driverOptions = nil
 	}()
@@ -133,8 +136,14 @@ func (c *Client) validate() error {
 	if strings.TrimSpace(c.uri) == "" {
 		return fmt.Errorf("uri no puede estar vacío")
 	}
+	if strings.TrimSpace(c.uri) != c.uri {
+		return fmt.Errorf("uri no puede contener espacios al inicio o al final")
+	}
 	if strings.TrimSpace(c.databaseName) == "" {
 		return fmt.Errorf("nombre de base de datos no puede estar vacío")
+	}
+	if strings.TrimSpace(c.databaseName) != c.databaseName {
+		return fmt.Errorf("nombre de base de datos no puede contener espacios al inicio o al final")
 	}
 	if c.tlsConfigured && c.tlsConfig == nil {
 		return fmt.Errorf("configuracion tls no puede ser nil")

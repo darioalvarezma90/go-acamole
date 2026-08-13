@@ -244,6 +244,23 @@ func TestNewTLSRejectsBlankServerName(t *testing.T) {
 	}
 }
 
+func TestNewTLSRejectsPaddedServerName(t *testing.T) {
+	caPath, certificatePath, keyPath := writeTLSMaterial(t, nil)
+
+	_, err := NewTLS(
+		caPath,
+		certificatePath,
+		keyPath,
+		WithTLSServerName(" mongodb.example.com"),
+	)
+	if err == nil {
+		t.Fatal("NewTLS() error = nil")
+	}
+	if !strings.Contains(err.Error(), "espacios") {
+		t.Fatalf("NewTLS() error = %q, want padded-server-name message", err)
+	}
+}
+
 func writeTLSMaterial(t *testing.T, password []byte) (string, string, string) {
 	t.Helper()
 

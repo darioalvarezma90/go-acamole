@@ -22,7 +22,9 @@ func TestNewClientRejectsInvalidConfiguration(t *testing.T) {
 	}{
 		{name: "nil context", uri: "mongodb://localhost", database: "db", wantError: ErrNilContext},
 		{name: "blank URI", ctx: context.Background(), uri: " ", database: "db", wantInError: "uri"},
+		{name: "padded URI", ctx: context.Background(), uri: " mongodb://localhost", database: "db", wantInError: "espacios"},
 		{name: "blank database", ctx: context.Background(), uri: "mongodb://localhost", database: " ", wantInError: "base de datos"},
+		{name: "padded database", ctx: context.Background(), uri: "mongodb://localhost", database: " db", wantInError: "espacios"},
 		{name: "nil TLS", ctx: context.Background(), uri: "mongodb://localhost", database: "db", options: []ClientOption{WithTLS(nil)}, wantInError: "tls"},
 		{name: "nil driver option", ctx: context.Background(), uri: "mongodb://localhost", database: "db", options: []ClientOption{WithDriverOptions(nil)}, wantInError: "posicion 0"},
 		{name: "URI in driver option", ctx: context.Background(), uri: "mongodb://localhost", database: "db", options: []ClientOption{WithDriverOptions(options.Client().ApplyURI("mongodb://other-host"))}, wantInError: "no puede definir una uri"},
@@ -85,6 +87,9 @@ func TestNewClientReleasesConstructionOptions(t *testing.T) {
 
 	if client.driverOptions != nil {
 		t.Errorf("NewClient() retained construction options: %v", client.driverOptions)
+	}
+	if client.uri != "" {
+		t.Errorf("NewClient() retained URI: %q", client.uri)
 	}
 }
 

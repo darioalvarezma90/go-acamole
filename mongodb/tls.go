@@ -75,8 +75,8 @@ func (configuration *TLS) validate() error {
 	if strings.TrimSpace(configuration.clientKeyFile) == "" {
 		return fmt.Errorf("archivo de llave cliente no puede estar vacío")
 	}
-	if configuration.serverName != "" && strings.TrimSpace(configuration.serverName) == "" {
-		return fmt.Errorf("nombre de servidor tls no puede contener solo espacios")
+	if configuration.serverName != "" && strings.TrimSpace(configuration.serverName) != configuration.serverName {
+		return fmt.Errorf("nombre de servidor tls no puede contener espacios al inicio o al final")
 	}
 	return nil
 }

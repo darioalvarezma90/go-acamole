@@ -61,6 +61,7 @@ func TestNewClientRejectsInvalidConfiguration(t *testing.T) {
 	}{
 		{name: "nil context", connectionString: offlineConnectionString, wantError: ErrNilContext},
 		{name: "blank connection string", ctx: context.Background(), connectionString: " ", wantInError: "cadena de conexion"},
+		{name: "padded connection string", ctx: context.Background(), connectionString: " postgres://localhost/db", wantInError: "espacios"},
 		{name: "invalid connection string", ctx: context.Background(), connectionString: "postgres://%", wantInError: "interpretando"},
 		{name: "nil pool configurer", ctx: context.Background(), connectionString: offlineConnectionString, options: []ClientOption{WithPoolConfigurer(nil)}, wantInError: "configurador"},
 		{name: "zero max connections", ctx: context.Background(), connectionString: offlineConnectionString, options: []ClientOption{WithMaxConnections(0)}, wantInError: "mayor que cero"},
@@ -68,6 +69,7 @@ func TestNewClientRejectsInvalidConfiguration(t *testing.T) {
 		{name: "minimum above maximum", ctx: context.Background(), connectionString: offlineConnectionString, options: []ClientOption{WithMaxConnections(2), WithMinConnections(3)}, wantInError: "superar el maximo"},
 		{name: "invalid health check period", ctx: context.Background(), connectionString: offlineConnectionString, options: []ClientOption{WithHealthCheckPeriod(0)}, wantInError: "mayor que cero"},
 		{name: "blank application name", ctx: context.Background(), connectionString: offlineConnectionString, options: []ClientOption{WithApplicationName(" ")}, wantInError: "aplicacion"},
+		{name: "padded application name", ctx: context.Background(), connectionString: offlineConnectionString, options: []ClientOption{WithApplicationName(" service")}, wantInError: "espacios"},
 		{name: "nil TLS", ctx: context.Background(), connectionString: offlineConnectionString, options: []ClientOption{WithTLSConfig(nil)}, wantInError: "tls"},
 		{name: "required TLS disabled", ctx: context.Background(), connectionString: offlineConnectionString, options: []ClientOption{WithRequireTLS()}, wantInError: "sin tls"},
 		{name: "configurer error", ctx: context.Background(), connectionString: offlineConnectionString, options: []ClientOption{WithPoolConfigurer(func(*pgxpool.Config) error { return errors.New("custom failure") })}, wantInError: "custom failure"},

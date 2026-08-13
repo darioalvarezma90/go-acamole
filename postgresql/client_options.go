@@ -30,6 +30,9 @@ func WithApplicationName(applicationName string) ClientOption {
 		if strings.TrimSpace(applicationName) == "" {
 			return fmt.Errorf("nombre de aplicacion no puede estar vacío")
 		}
+		if strings.TrimSpace(applicationName) != applicationName {
+			return fmt.Errorf("nombre de aplicacion no puede contener espacios al inicio o al final")
+		}
 		if config.ConnConfig.RuntimeParams == nil {
 			config.ConnConfig.RuntimeParams = make(map[string]string)
 		}

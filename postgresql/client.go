@@ -1,5 +1,3 @@
-// Package postgresql proporciona un cliente PostgreSQL reutilizable construido
-// sobre el pool de conexiones concurrente de pgx.
 package postgresql
 
 import (
@@ -118,6 +116,9 @@ func (c *Client) validate() error {
 	}
 	if strings.TrimSpace(c.connectionString) == "" {
 		return fmt.Errorf("cadena de conexion no puede estar vacía")
+	}
+	if strings.TrimSpace(c.connectionString) != c.connectionString {
+		return fmt.Errorf("cadena de conexion no puede contener espacios al inicio o al final")
 	}
 	if c.tlsConfigured && c.tlsConfig == nil {
 		return fmt.Errorf("configuracion tls no puede ser nil")

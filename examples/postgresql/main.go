@@ -15,7 +15,7 @@ func main() {
 	// PGDATABASE y los valores predeterminados de pgx.
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	client, err := acamole.NewClientWithOptions(ctx,
+	client, err := acamole.NewClient(ctx,
 		acamole.WithConnectionString(dsn),
 		acamole.WithApplicationName("go-acamole-example"),
 		acamole.WithMaxConnections(10),

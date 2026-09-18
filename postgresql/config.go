@@ -56,6 +56,9 @@ func parseConnectionConfig(connectionString string, params map[string]string) (*
 			}
 			return nil, err
 		}
+		// pgx interpreta '+' literalmente en las URI, a diferencia de net/url.
+		// Protegerlo antes de decodificar y emitir los espacios como %20.
+		uri.RawQuery = strings.ReplaceAll(uri.RawQuery, "+", "%2B")
 		query := uri.Query()
 		for _, key := range keys {
 			if value, present := params[key]; present {
@@ -65,7 +68,7 @@ func parseConnectionConfig(connectionString string, params map[string]string) (*
 				query.Set(key, value)
 			}
 		}
-		uri.RawQuery = query.Encode()
+		uri.RawQuery = strings.ReplaceAll(query.Encode(), "+", "%20")
 		return pgxpool.ParseConfig(uri.String())
 	}
 

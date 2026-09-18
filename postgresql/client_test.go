@@ -17,7 +17,7 @@ const offlineConnectionString = "postgres://test:secret@localhost:5432/testdb?ss
 func TestNewClientWithoutConnectionCheck(t *testing.T) {
 	client, err := NewClient(
 		context.Background(),
-		offlineConnectionString,
+		WithConnectionString(offlineConnectionString),
 		WithConnectionCheck(false),
 		WithApplicationName("orders-api"),
 		WithMaxConnections(12),
@@ -77,7 +77,8 @@ func TestNewClientRejectsInvalidConfiguration(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := NewClient(test.ctx, test.connectionString, test.options...)
+			options := append([]ClientOption{WithConnectionString(test.connectionString)}, test.options...)
+			_, err := NewClient(test.ctx, options...)
 			if err == nil {
 				t.Fatal("NewClient() error = nil")
 			}
@@ -106,7 +107,7 @@ func TestNilClientMethods(t *testing.T) {
 func TestClientCloseIsIdempotentAndConcurrent(t *testing.T) {
 	client, err := NewClient(
 		context.Background(),
-		offlineConnectionString,
+		WithConnectionString(offlineConnectionString),
 		WithConnectionCheck(false),
 	)
 	if err != nil {
@@ -135,7 +136,7 @@ func TestClientCloseIsIdempotentAndConcurrent(t *testing.T) {
 func TestClientPingRejectsNilContext(t *testing.T) {
 	client, err := NewClient(
 		context.Background(),
-		offlineConnectionString,
+		WithConnectionString(offlineConnectionString),
 		WithConnectionCheck(false),
 	)
 	if err != nil {
@@ -151,7 +152,7 @@ func TestClientPingRejectsNilContext(t *testing.T) {
 func TestNewClientAppliesVerifiedTLS(t *testing.T) {
 	client, err := NewClient(
 		context.Background(),
-		offlineConnectionString,
+		WithConnectionString(offlineConnectionString),
 		WithConnectionCheck(false),
 		WithTLSConfig(&tls.Config{}),
 	)
@@ -180,7 +181,7 @@ func TestNewClientAppliesVerifiedTLS(t *testing.T) {
 func TestNewClientRejectsInsecureTLS(t *testing.T) {
 	_, err := NewClient(
 		context.Background(),
-		offlineConnectionString,
+		WithConnectionString(offlineConnectionString),
 		WithConnectionCheck(false),
 		WithTLSConfig(&tls.Config{InsecureSkipVerify: true}),
 	)

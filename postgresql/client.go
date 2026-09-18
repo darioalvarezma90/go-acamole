@@ -42,17 +42,17 @@ type Client struct {
 }
 
 // NewClient construye un pool PostgreSQL y, de forma predeterminada, verifica
-// la conectividad mediante Ping. La cadena puede usar formato URL o libpq;
-// vacía utiliza las variables PG* y los valores predeterminados de pgx.
+// la conectividad mediante Ping. WithConnectionString acepta una URL o cadena
+// libpq opcional; si se omite o está vacía utiliza las variables PG* y los
+// valores predeterminados de pgx.
 // Las opciones de conexión individuales tienen prioridad sobre la cadena.
-func NewClient(ctx context.Context, connectionString string, opts ...ClientOption) (*Client, error) {
+func NewClient(ctx context.Context, opts ...ClientOption) (*Client, error) {
 	if ctx == nil {
 		return nil, ErrNilContext
 	}
 
 	client := &Client{
-		connectionString: connectionString,
-		connectionCheck:  true,
+		connectionCheck: true,
 	}
 
 	for _, opt := range opts {
@@ -115,8 +115,10 @@ func NewClient(ctx context.Context, connectionString string, opts ...ClientOptio
 
 // NewClientWithOptions construye un cliente sin exigir una cadena de conexión.
 // Acepta WithConnectionString, opciones individuales o los valores PG* de pgx.
+//
+// Deprecated: use NewClient, que ahora acepta las mismas opciones.
 func NewClientWithOptions(ctx context.Context, opts ...ClientOption) (*Client, error) {
-	return NewClient(ctx, "", opts...)
+	return NewClient(ctx, opts...)
 }
 
 // validate comprueba que la configuración interna del cliente sea válida.

@@ -16,7 +16,7 @@ func TestClientIntegration(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	client, err := NewClient(ctx, connectionString)
+	client, err := NewClient(ctx, WithConnectionString(connectionString))
 	if err != nil {
 		t.Fatalf("NewClient() error = %v", err)
 	}

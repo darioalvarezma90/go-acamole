@@ -409,10 +409,10 @@ Si el cierre del cliente interrumpe una operación, el error conserva tanto
 `postgresql` administra un `*pgxpool.Pool` mediante el contrato `IClient`.
 Acepta cadenas de conexión URL o libpq, parámetros individuales o configuración
 mediante variables `PG*`; valida la configuración resultante y ejecuta `Ping`
-por defecto. `NewClient(ctx, cadena, opciones...)` conserva su firma y acepta
-una cadena vacía. `NewClientWithOptions(ctx, opciones...)` permite omitirla por
-completo. Una cadena no vacía no admite espacios laterales. La cadena y los
-parámetros individuales se eliminan del wrapper después de interpretarlos.
+por defecto. `NewClient(ctx, opciones...)` permite omitir la cadena por completo
+o proporcionarla con `WithConnectionString(cadena)`. Una cadena no vacía no
+admite espacios laterales. La cadena y los parámetros individuales se eliminan
+del wrapper después de interpretarlos.
 Con `WithConnectionCheck(false)` se crea el pool sin comprobar que PostgreSQL
 sea alcanzable.
 
@@ -433,7 +433,7 @@ func main() {
 
 	client, err := postgresql.NewClient(
 		ctx,
-		"postgres://app:secret@localhost:5432/orders?sslmode=verify-full",
+		postgresql.WithConnectionString("postgres://app:secret@localhost:5432/orders?sslmode=verify-full"),
 		postgresql.WithApplicationName("orders-api"),
 		postgresql.WithMaxConnections(20),
 		postgresql.WithMinConnections(2),
@@ -455,7 +455,7 @@ func main() {
 También se puede construir sin URI:
 
 ```go
-client, err := postgresql.NewClientWithOptions(
+client, err := postgresql.NewClient(
 	ctx,
 	postgresql.WithHost("localhost"),
 	postgresql.WithPort(5432),
@@ -471,20 +471,24 @@ client, err := postgresql.NewClientWithOptions(
 ```
 
 Este ejemplo requiere importar `os`. Sin opciones de conexión,
-`postgresql.NewClientWithOptions(ctx)` utiliza `PGHOST`, `PGPORT`, `PGUSER`,
+`postgresql.NewClient(ctx)` utiliza `PGHOST`, `PGPORT`, `PGUSER`,
 `PGPASSWORD`, `PGDATABASE` y los demás valores admitidos por pgx. Los valores
 no definidos conservan los predeterminados del driver, incluido el puerto 5432
 y `sslmode=prefer`. La búsqueda de contraseñas en `pgpass` también se conserva
 cuando la contraseña resultante está vacía.
 
-Para combinar una URI con opciones, use `NewClient(ctx, uri, opciones...)` o
-`NewClientWithOptions(ctx, WithConnectionString(uri), opciones...)`. Los campos
+Para combinar una URI con opciones, use
+`NewClient(ctx, WithConnectionString(uri), otrasOpciones...)`. Los campos
 individuales prevalecen sobre la cadena y el entorno, independientemente de la
 posición de `WithConnectionString`. Si se repite una opción de conexión, gana
 su último valor. Los campos no especificados se conservan. Las contraseñas se
 pasan literalmente, sin escape URL ni libpq.
 
-Opciones compartidas por ambos constructores:
+Las llamadas anteriores `NewClient(ctx, uri, opciones...)` deben migrarse a
+`NewClient(ctx, WithConnectionString(uri), opciones...)`. `NewClientWithOptions`
+se conserva como alias obsoleto que delega en `NewClient`.
+
+Opciones de `NewClient`:
 
 | Opción | Descripción |
 | --- | --- |

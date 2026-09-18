@@ -35,12 +35,12 @@ func TestConnectionOptionsOverrideBaseAndPreserveCredentials(t *testing.T) {
 	const password = " p@ss:/?#&=+'\\ word\n "
 	for _, base := range []string{
 		"",
-		"postgres://old:old@old.example:5432/old?database=alias&user=query&password=query&application_name=preserved",
+		"postgres://old:old@old.example:5432/old?database=alias&user=query&password=query&application_name=preserved+value%20with%20space",
 		"postgresql://old:old@old.example:5432/old?dbname=alias",
 		"host=old.example port=5432 user=old password=old dbname=old",
 	} {
 		t.Run(base, func(t *testing.T) {
-			client, err := NewClientWithOptions(context.Background(),
+			client, err := NewClient(context.Background(),
 				WithHost("db.example"), WithPort(6432), WithUser("app user"),
 				WithPassword(password), WithDatabase("orders ' archive\\2026"),
 				// La cadena se registra al final para comprobar la prioridad por campo.
@@ -60,7 +60,7 @@ func TestConnectionOptionsOverrideBaseAndPreserveCredentials(t *testing.T) {
 			if pool.MaxConns != 17 || pool.MinConns != 0 || pool.MinIdleConns != 0 {
 				t.Fatal("pool options were not applied")
 			}
-			if strings.Contains(base, "application_name=") && config.RuntimeParams["application_name"] != "preserved" {
+			if strings.Contains(base, "application_name=") && config.RuntimeParams["application_name"] != "preserved+value with space" {
 				t.Fatal("unrelated URI parameter was lost")
 			}
 			if client.connectionString != "" || client.connectionParams != nil {
@@ -78,8 +78,11 @@ func TestClientWithoutURIUsesEnvironment(t *testing.T) {
 	t.Setenv("PGPASSWORD", "environment-password")
 	t.Setenv("PGDATABASE", "environment-db")
 	for _, constructor := range []func(context.Context, ...ClientOption) (*Client, error){
+		NewClient,
 		NewClientWithOptions,
-		func(ctx context.Context, opts ...ClientOption) (*Client, error) { return NewClient(ctx, "", opts...) },
+		func(ctx context.Context, opts ...ClientOption) (*Client, error) {
+			return NewClient(ctx, append([]ClientOption{WithConnectionString("")}, opts...)...)
+		},
 	} {
 		client, err := constructor(context.Background(), WithConnectionCheck(false))
 		if err != nil {
@@ -100,7 +103,7 @@ func TestClientWithoutURIUsesDriverDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	client, err := NewClientWithOptions(context.Background(), WithConnectionCheck(false))
+	client, err := NewClient(context.Background(), WithConnectionCheck(false))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,7 +128,7 @@ func TestConnectionOptionsRejectInvalidValues(t *testing.T) {
 		{"invalid URI", WithConnectionString("postgres://%")},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			client, err := NewClientWithOptions(context.Background(), WithConnectionCheck(false), WithHost("localhost"), test.option)
+			client, err := NewClient(context.Background(), WithConnectionCheck(false), WithHost("localhost"), test.option)
 			if client != nil {
 				client.Close()
 			}
@@ -141,7 +144,7 @@ func TestConnectionOptionsRebuildTLSAndFallbacks(t *testing.T) {
 	for _, mode := range []string{"prefer", "verify-full"} {
 		t.Run(mode, func(t *testing.T) {
 			client, err := NewClient(context.Background(),
-				"postgres://old:secret@old-one.example:5432,old-two.example:5433/db",
+				WithConnectionString("postgres://old:secret@old-one.example:5432,old-two.example:5433/db"),
 				WithHost("new-one.example,new-two.example"), WithPort(6432),
 				WithSSLMode(mode), WithConnectionCheck(false),
 			)
@@ -180,7 +183,7 @@ func TestConnectionOptionsResolvePasswordForFinalEndpoint(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("PGPASSFILE", passfile)
-	client, err := NewClient(context.Background(), "postgres://old@old.example/old",
+	client, err := NewClient(context.Background(), WithConnectionString("postgres://old@old.example/old"),
 		WithHost("new.example"), WithPort(6432), WithUser("app"), WithDatabase("orders"), WithConnectionCheck(false))
 	if err != nil {
 		t.Fatal(err)
@@ -194,7 +197,7 @@ func TestConnectionOptionsResolvePasswordForFinalEndpoint(t *testing.T) {
 func TestConnectionOptionOrderingAndEmptyPassword(t *testing.T) {
 	isolateConnectionEnvironment(t)
 	t.Setenv("PGPASSWORD", "environment-secret")
-	client, err := NewClientWithOptions(context.Background(), nil,
+	client, err := NewClient(context.Background(), nil,
 		WithConnectionString("postgres://old:secret@old.example/old"),
 		WithConnectionString(offlineConnectionString),
 		WithHost("first.example"), WithHost("last.example"), WithPort(65535),
@@ -225,7 +228,7 @@ func TestClientWithOptionsChecksConnectionByDefault(t *testing.T) {
 	isolateConnectionEnvironment(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	client, err := NewClientWithOptions(ctx)
+	client, err := NewClient(ctx)
 	if client != nil {
 		client.Close()
 		t.Fatal("expected no client when the initial ping fails")
@@ -248,7 +251,7 @@ func TestClientWithOptionsPreservesPoolAndTLSValidation(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			options := append([]ClientOption{WithConnectionCheck(false), WithHost("localhost")}, test.options...)
-			client, err := NewClientWithOptions(context.Background(), options...)
+			client, err := NewClient(context.Background(), options...)
 			if client != nil {
 				client.Close()
 			}

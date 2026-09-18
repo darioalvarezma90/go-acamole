@@ -27,6 +27,7 @@ var (
 // forma segura desde múltiples goroutines y no debe crearse por petición.
 type Client struct {
 	connectionString string
+	connectionParams map[string]string
 	connectionCheck  bool
 	poolConfigurers  []PoolConfigurer
 
@@ -41,7 +42,9 @@ type Client struct {
 }
 
 // NewClient construye un pool PostgreSQL y, de forma predeterminada, verifica
-// la conectividad mediante Ping. La cadena puede usar formato URL o libpq.
+// la conectividad mediante Ping. La cadena puede usar formato URL o libpq;
+// vacía utiliza las variables PG* y los valores predeterminados de pgx.
+// Las opciones de conexión individuales tienen prioridad sobre la cadena.
 func NewClient(ctx context.Context, connectionString string, opts ...ClientOption) (*Client, error) {
 	if ctx == nil {
 		return nil, ErrNilContext
@@ -62,8 +65,9 @@ func NewClient(ctx context.Context, connectionString string, opts ...ClientOptio
 		return nil, fmt.Errorf("error de configuracion del cliente postgresql: %w", err)
 	}
 
-	poolConfig, err := pgxpool.ParseConfig(client.connectionString)
+	poolConfig, err := parseConnectionConfig(client.connectionString, client.connectionParams)
 	client.connectionString = ""
+	client.connectionParams = nil
 	if err != nil {
 		return nil, fmt.Errorf("error interpretando configuracion postgresql: %w", err)
 	}
@@ -109,13 +113,16 @@ func NewClient(ctx context.Context, connectionString string, opts ...ClientOptio
 	return client, nil
 }
 
+// NewClientWithOptions construye un cliente sin exigir una cadena de conexión.
+// Acepta WithConnectionString, opciones individuales o los valores PG* de pgx.
+func NewClientWithOptions(ctx context.Context, opts ...ClientOption) (*Client, error) {
+	return NewClient(ctx, "", opts...)
+}
+
 // validate comprueba que la configuración interna del cliente sea válida.
 func (c *Client) validate() error {
 	if c == nil {
 		return fmt.Errorf("cliente no puede ser nil")
-	}
-	if strings.TrimSpace(c.connectionString) == "" {
-		return fmt.Errorf("cadena de conexion no puede estar vacía")
 	}
 	if strings.TrimSpace(c.connectionString) != c.connectionString {
 		return fmt.Errorf("cadena de conexion no puede contener espacios al inicio o al final")

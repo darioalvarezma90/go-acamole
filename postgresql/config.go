@@ -4,12 +4,81 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net"
+	"net/url"
 	"strconv"
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+// parseConnectionConfig incorpora los parámetros antes de ParseConfig para que
+// pgx derive TLS, fallbacks y pgpass a partir del destino definitivo.
+func parseConnectionConfig(connectionString string, params map[string]string) (*pgxpool.Config, error) {
+	if len(params) == 0 {
+		return pgxpool.ParseConfig(connectionString)
+	}
+	// Orden estable para validación y serialización de parámetros.
+	keys := []string{"host", "port", "user", "password", "dbname", "sslmode"}
+	for _, key := range keys {
+		value, present := params[key]
+		if !present {
+			continue
+		}
+		switch key {
+		case "host", "user", "dbname":
+			if strings.TrimSpace(value) == "" {
+				return nil, fmt.Errorf("%s no puede estar vacío", key)
+			}
+			if key == "host" && strings.TrimSpace(value) != value {
+				return nil, fmt.Errorf("host no puede contener espacios al inicio o al final")
+			}
+		case "port":
+			port, err := strconv.Atoi(value)
+			if err != nil || port < 1 || port > 65535 {
+				return nil, fmt.Errorf("puerto debe estar entre 1 y 65535")
+			}
+		case "sslmode":
+			switch value {
+			case "disable", "allow", "prefer", "require", "verify-ca", "verify-full":
+			default:
+				return nil, fmt.Errorf("sslmode no válido")
+			}
+		}
+	}
+
+	if strings.HasPrefix(connectionString, "postgres://") || strings.HasPrefix(connectionString, "postgresql://") {
+		uri, err := url.Parse(connectionString)
+		if err != nil {
+			// url.Error incluye la URL original, que puede contener credenciales.
+			if urlError, ok := err.(*url.Error); ok {
+				return nil, urlError.Err
+			}
+			return nil, err
+		}
+		query := uri.Query()
+		for _, key := range keys {
+			if value, present := params[key]; present {
+				if key == "dbname" {
+					query.Del("database") // pgx acepta ambos nombres para la misma clave.
+				}
+				query.Set(key, value)
+			}
+		}
+		uri.RawQuery = query.Encode()
+		return pgxpool.ParseConfig(uri.String())
+	}
+
+	var dsn strings.Builder
+	dsn.WriteString(connectionString)
+	escape := strings.NewReplacer(`\`, `\\`, `'`, `\'`)
+	for _, key := range keys {
+		if value, present := params[key]; present {
+			dsn.WriteString(" " + key + "='" + escape.Replace(value) + "'")
+		}
+	}
+	return pgxpool.ParseConfig(dsn.String())
+}
 
 // validatePoolConfig comprueba los límites y tiempos configurados para el pool.
 func validatePoolConfig(config *pgxpool.Config) error {

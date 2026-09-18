@@ -407,9 +407,12 @@ Si el cierre del cliente interrumpe una operación, el error conserva tanto
 ## Paquete `postgresql`
 
 `postgresql` administra un `*pgxpool.Pool` mediante el contrato `IClient`.
-Acepta cadenas de conexión URL o libpq, valida la configuración resultante y
-ejecuta `Ping` por defecto. La cadena es obligatoria, no admite espacios
-laterales y se elimina de la estructura del wrapper después de interpretarla.
+Acepta cadenas de conexión URL o libpq, parámetros individuales o configuración
+mediante variables `PG*`; valida la configuración resultante y ejecuta `Ping`
+por defecto. `NewClient(ctx, cadena, opciones...)` conserva su firma y acepta
+una cadena vacía. `NewClientWithOptions(ctx, opciones...)` permite omitirla por
+completo. Una cadena no vacía no admite espacios laterales. La cadena y los
+parámetros individuales se eliminan del wrapper después de interpretarlos.
 Con `WithConnectionCheck(false)` se crea el pool sin comprobar que PostgreSQL
 sea alcanzable.
 
@@ -449,10 +452,49 @@ func main() {
 }
 ```
 
-Opciones de `NewClient`:
+También se puede construir sin URI:
+
+```go
+client, err := postgresql.NewClientWithOptions(
+	ctx,
+	postgresql.WithHost("localhost"),
+	postgresql.WithPort(5432),
+	postgresql.WithUser("app"),
+	postgresql.WithPassword(os.Getenv("POSTGRESQL_PASSWORD")),
+	postgresql.WithDatabase("orders"),
+	postgresql.WithMaxConnections(20),
+	postgresql.WithMinConnections(2),
+	postgresql.WithConnectTimeout(5*time.Second),
+	postgresql.WithSSLMode("verify-full"),
+)
+// Comprobar err y cerrar client con Close cuando termine su uso.
+```
+
+Este ejemplo requiere importar `os`. Sin opciones de conexión,
+`postgresql.NewClientWithOptions(ctx)` utiliza `PGHOST`, `PGPORT`, `PGUSER`,
+`PGPASSWORD`, `PGDATABASE` y los demás valores admitidos por pgx. Los valores
+no definidos conservan los predeterminados del driver, incluido el puerto 5432
+y `sslmode=prefer`. La búsqueda de contraseñas en `pgpass` también se conserva
+cuando la contraseña resultante está vacía.
+
+Para combinar una URI con opciones, use `NewClient(ctx, uri, opciones...)` o
+`NewClientWithOptions(ctx, WithConnectionString(uri), opciones...)`. Los campos
+individuales prevalecen sobre la cadena y el entorno, independientemente de la
+posición de `WithConnectionString`. Si se repite una opción de conexión, gana
+su último valor. Los campos no especificados se conservan. Las contraseñas se
+pasan literalmente, sin escape URL ni libpq.
+
+Opciones compartidas por ambos constructores:
 
 | Opción | Descripción |
 | --- | --- |
+| `WithConnectionString` | Establece la cadena base URL o libpq; vacía utiliza el entorno y los valores predeterminados. |
+| `WithHost` | Establece un host, una ruta de socket Unix o una lista de hosts separada por comas. |
+| `WithPort` | Establece un puerto entre 1 y 65535 para los hosts configurados. |
+| `WithUser` | Establece el usuario; no admite un valor vacío. |
+| `WithPassword` | Establece la contraseña literal; admite un valor vacío. |
+| `WithDatabase` | Establece la base de datos; no admite un valor vacío. |
+| `WithSSLMode` | Selecciona `disable`, `allow`, `prefer`, `require`, `verify-ca` o `verify-full`. |
 | `WithConnectionCheck` | Habilita o deshabilita el `Ping` inicial; está habilitado por defecto. |
 | `WithApplicationName` | Configura `application_name`. |
 | `WithConnectTimeout` | Limita la apertura de una conexión; cero deshabilita el timeout. |
@@ -473,8 +515,10 @@ Opciones de `NewClient`:
 transporte cifrado; para validar también hostname y confianza use
 `sslmode=verify-full` o `WithTLSConfig`.
 
-Los `PoolConfigurer` se ejecutan en el orden registrado después de
-`pgxpool.ParseConfig`. Si se usa `WithTLSConfig`, su copia segura se aplica
+Los parámetros individuales se incorporan antes de `pgxpool.ParseConfig` para
+resolver TLS, hosts alternativos y `pgpass` con el destino definitivo. Los
+`PoolConfigurer` y las opciones del pool se ejecutan en el orden registrado
+después de ese análisis. Si se usa `WithTLSConfig`, su copia segura se aplica
 después de esos configuradores para impedir que restauren accidentalmente un
 fallback sin TLS. El máximo del pool debe ser mayor que cero; mínimos y
 duraciones no pueden ser negativos, el periodo de health check debe ser mayor
